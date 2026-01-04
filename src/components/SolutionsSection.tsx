@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Clock, Shield, Heart, GraduationCap, Users, Target, ArrowRight, CheckCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Shield, Heart, GraduationCap, Users, Target, ArrowRight } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import AttendanceSimulation from './AttendanceSimulation';
 
 interface SecondarySolutionProps {
   icon: React.ReactNode;
@@ -118,99 +118,16 @@ const SolutionsSection = () => {
           </p>
         </div>
 
-        {/* Featured Smart Attendance Card */}
-        <div className={`mb-8 transition-all duration-700 delay-100 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+        {/* Featured Smart Attendance - Interactive Simulation */}
+        <div className={`mb-12 transition-all duration-700 delay-100 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
           <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-card via-card to-primary/5">
-            <CardContent className="p-0">
-              <div className="grid grid-cols-1 lg:grid-cols-2">
-                {/* Image side */}
-                <div className="relative h-64 lg:h-auto min-h-[300px] overflow-hidden">
-                  <img 
-                    src="https://images.unsplash.com/photo-1523206489230-c012c64b2b48?ixlib=rb-4.0.3&auto=format&fit=crop&w=774&q=80" 
-                    alt="Employee using smart attendance" 
-                    className="absolute inset-0 w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-r from-primary/60 to-secondary/40" />
-                  
-                  {/* Badge */}
-                  <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-mint text-charcoal text-sm font-bold flex items-center gap-1">
-                    <Clock size={14} />
-                    Flagship Product
-                  </div>
-                  
-                  {/* Floating stats */}
-                  <div className="absolute bottom-4 left-4 right-4 flex gap-4">
-                    <div className="bg-background/90 backdrop-blur-sm rounded-lg px-4 py-2 text-center">
-                      <div className="text-2xl font-bold text-primary">99%</div>
-                      <div className="text-xs text-muted-foreground">Accuracy</div>
-                    </div>
-                    <div className="bg-background/90 backdrop-blur-sm rounded-lg px-4 py-2 text-center">
-                      <div className="text-2xl font-bold text-primary">&lt;1s</div>
-                      <div className="text-xs text-muted-foreground">Check-in</div>
-                    </div>
-                    <div className="bg-background/90 backdrop-blur-sm rounded-lg px-4 py-2 text-center">
-                      <div className="text-2xl font-bold text-primary">0</div>
-                      <div className="text-xs text-muted-foreground">Cards needed</div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Content side */}
-                <div className="p-8 lg:p-10 flex flex-col justify-center">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <Clock size={24} className="text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold">Smart Attendance</h3>
-                      <p className="text-muted-foreground text-sm">Face-powered time tracking</p>
-                    </div>
-                  </div>
-                  
-                  {/* Who it's for */}
-                  <div className="mb-4">
-                    <div className="flex items-center gap-2 text-sm font-medium text-primary mb-2">
-                      <Users size={16} />
-                      <span>Who it's for</span>
-                    </div>
-                    <p className="text-foreground">
-                      Businesses, churches, schools, and any organization that needs reliable attendance tracking without the hassle of cards or manual registers.
-                    </p>
-                  </div>
-                  
-                  {/* Problem solved */}
-                  <div className="mb-6">
-                    <div className="flex items-center gap-2 text-sm font-medium text-primary mb-2">
-                      <Target size={16} />
-                      <span>Problem solved</span>
-                    </div>
-                    <ul className="space-y-2">
-                      <li className="flex items-start gap-2">
-                        <CheckCircle size={18} className="text-mint shrink-0 mt-0.5" />
-                        <span className="text-foreground">Ends buddy punching and time theft</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle size={18} className="text-mint shrink-0 mt-0.5" />
-                        <span className="text-foreground">No lost or forgotten ID cards</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle size={18} className="text-mint shrink-0 mt-0.5" />
-                        <span className="text-foreground">Instant, touchless check-in experience</span>
-                      </li>
-                    </ul>
-                  </div>
-                  
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <Button className="bg-primary hover:bg-primary/90 text-primary-foreground group">
-                      Try Live Demo
-                      <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
-                    </Button>
-                    <Button variant="outline" className="border-primary/30 text-primary hover:bg-primary/5">
-                      See Pricing
-                    </Button>
-                  </div>
-                </div>
+            <CardContent className="p-8 lg:p-10">
+              <div className="flex items-center justify-center gap-2 mb-8">
+                <span className="px-3 py-1 rounded-full bg-mint text-charcoal text-sm font-bold">
+                  Flagship Product
+                </span>
               </div>
+              <AttendanceSimulation />
             </CardContent>
           </Card>
         </div>
