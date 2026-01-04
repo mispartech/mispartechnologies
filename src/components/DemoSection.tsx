@@ -1,19 +1,18 @@
-
-import React, { useRef, useEffect } from 'react';
-import DemoForm from './DemoForm';
-import { CheckCircle2 } from 'lucide-react';
+import React, { useRef, useEffect, useState } from 'react';
+import InteractiveFaceDemo from './InteractiveFaceDemo';
+import LightweightDemoForm from './LightweightDemoForm';
 
 const DemoSection = () => {
   const sectionRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const formRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
-            entry.target.classList.add('animate');
+            setIsVisible(true);
             observer.unobserve(entry.target);
           }
         });
@@ -21,84 +20,37 @@ const DemoSection = () => {
       { threshold: 0.1 }
     );
 
-    if (contentRef.current) {
-      observer.observe(contentRef.current);
-    }
-
-    if (formRef.current) {
-      observer.observe(formRef.current);
+    if (sectionRef.current) {
+      observer.observe(sectionRef.current);
     }
 
     return () => {
-      if (contentRef.current) {
-        observer.unobserve(contentRef.current);
-      }
-      if (formRef.current) {
-        observer.unobserve(formRef.current);
+      if (sectionRef.current) {
+        observer.unobserve(sectionRef.current);
       }
     };
   }, []);
 
-  const demoFeatures = [
-    "Experience real-time facial recognition in action",
-    "Test compatibility with your existing systems",
-    "Receive personalized guidance from our experts",
-    "Evaluate the technology in your specific environment",
-    "No obligation or commitment required"
-  ];
-
   return (
-    <section id="demo" className="section" ref={sectionRef}>
+    <section id="demo" className="section bg-gradient-to-b from-background to-muted/30" ref={sectionRef}>
       <div className="container-custom">
-        <div className="text-center max-w-3xl mx-auto mb-16">
-          <h2 className="mb-4">Experience Our Technology</h2>
-          <p className="text-lg text-gray-600">
-            Request a personalized demo of our facial recognition system and see how it can transform your organization.
+        <div className={`text-center max-w-2xl mx-auto mb-12 transition-all duration-700 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+          <span className="inline-block px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-4">
+            Try It Now
+          </span>
+          <h2 className="mb-4">Experience Face Recognition</h2>
+          <p className="text-muted-foreground text-lg">
+            See how fast and accurate our technology works. No camera access needed for this demo.
           </p>
         </div>
         
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-          <div className="animate-on-scroll" ref={contentRef}>
-            <div className="bg-gradient-to-br from-purple/5 to-purple-light/5 p-8 rounded-xl h-full">
-              <h3 className="text-2xl font-bold mb-6">Why Try Our Demo?</h3>
-              
-              <div className="space-y-4 mb-8">
-                {demoFeatures.map((feature, index) => (
-                  <div key={index} className="flex items-start">
-                    <CheckCircle2 className="text-purple shrink-0 mr-3 h-6 w-6" />
-                    <p className="text-gray-700">{feature}</p>
-                  </div>
-                ))}
-              </div>
-              
-              <div className="bg-white p-6 rounded-lg shadow-md">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="font-bold text-lg">Active Demo Users</h4>
-                  <span className="bg-purple/10 text-purple px-3 py-1 rounded-full text-sm font-medium">
-                    Live Updates
-                  </span>
-                </div>
-                
-                <div className="flex justify-around text-center">
-                  <div>
-                    <div className="text-3xl font-bold text-purple mb-1">147</div>
-                    <div className="text-sm text-gray-500">Today</div>
-                  </div>
-                  <div>
-                    <div className="text-3xl font-bold text-purple mb-1">1,298</div>
-                    <div className="text-sm text-gray-500">This Week</div>
-                  </div>
-                  <div>
-                    <div className="text-3xl font-bold text-purple mb-1">5,726</div>
-                    <div className="text-sm text-gray-500">This Month</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className={`transition-all duration-700 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+          {/* Interactive Demo Experience */}
+          <InteractiveFaceDemo onComplete={() => setShowForm(true)} />
           
-          <div className="animate-on-scroll-right" ref={formRef}>
-            <DemoForm />
+          {/* Lightweight Form - appears after demo */}
+          <div className={`mt-12 pt-8 border-t border-border transition-all duration-500 ${showForm ? 'opacity-100' : 'opacity-0'}`}>
+            <LightweightDemoForm isVisible={showForm} />
           </div>
         </div>
       </div>

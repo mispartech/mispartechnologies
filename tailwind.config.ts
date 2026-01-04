@@ -68,7 +68,10 @@ export default {
           light: "#8e4585", // Plum
           dark: "#4b2569",
         },
-        charcoal: "#333333",
+        charcoal: {
+          DEFAULT: "#333333",
+          light: "#4a4a4a",
+        },
         neonblue: "#00b4d8",
         mint: "#98d7c2",
       },
@@ -111,6 +114,15 @@ export default {
         "scan-line": {
           "0%": { top: "-10%" },
           "100%": { top: "110%" }
+        },
+        "confetti": {
+          "0%": { opacity: "1", transform: "scale(0) translateY(0)" },
+          "50%": { opacity: "1", transform: "scale(1) translateY(-20px)" },
+          "100%": { opacity: "0", transform: "scale(0.5) translateY(20px)" }
+        },
+        "scale-in": {
+          "0%": { opacity: "0", transform: "scale(0.5)" },
+          "100%": { opacity: "1", transform: "scale(1)" }
         }
       },
       animation: {
@@ -121,7 +133,9 @@ export default {
         "pulse-soft": "pulse-soft 2s ease-in-out infinite",
         "float": "float 8s ease-in-out infinite",
         "scan-down": "scan-down 1.5s ease-in-out infinite",
-        "scan-line": "scan-line 3s linear infinite"
+        "scan-line": "scan-line 3s linear infinite",
+        "confetti": "confetti 0.8s ease-out forwards",
+        "scale-in": "scale-in 0.3s ease-out forwards"
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
