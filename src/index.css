@@ -142,4 +142,8 @@
   .animate-on-scroll-right.animate {
     @apply animate-fade-in-right;
   }
+
+  .scan-line {
+    animation: scan-line 3s linear infinite;
+  }
 }
