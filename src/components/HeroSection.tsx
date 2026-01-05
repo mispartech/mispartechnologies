@@ -3,7 +3,11 @@ import { ArrowRight, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import FaceScanVisualization from './FaceScanVisualization';
 
-const HeroSection = () => {
+interface HeroSectionProps {
+  onRequestDemo?: () => void;
+}
+
+const HeroSection = ({ onRequestDemo }: HeroSectionProps) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [showScrollCue, setShowScrollCue] = useState(false);
 
