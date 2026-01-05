@@ -1,9 +1,12 @@
-
 import React, { useState, useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const Navbar = () => {
+interface NavbarProps {
+  onRequestDemo?: () => void;
+}
+
+const Navbar = ({ onRequestDemo }: NavbarProps) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -42,7 +45,7 @@ const Navbar = () => {
               <li><a href="#roadmap" className="text-gray-800 hover:text-purple transition-colors">Roadmap</a></li>
               <li><a href="#demo" className="text-gray-800 hover:text-purple transition-colors">Demo</a></li>
             </ul>
-            <Button className="bg-purple hover:bg-purple-dark text-white">Try Demo</Button>
+            <Button className="bg-purple hover:bg-purple-dark text-white" onClick={onRequestDemo}>Request Demo</Button>
           </div>
 
           {/* Mobile Menu Button */}
@@ -61,7 +64,7 @@ const Navbar = () => {
               <li><a href="#solutions" className="block text-gray-800 hover:text-purple transition-colors" onClick={toggleMenu}>Solutions</a></li>
               <li><a href="#roadmap" className="block text-gray-800 hover:text-purple transition-colors" onClick={toggleMenu}>Roadmap</a></li>
               <li><a href="#demo" className="block text-gray-800 hover:text-purple transition-colors" onClick={toggleMenu}>Demo</a></li>
-              <li><Button className="w-full bg-purple hover:bg-purple-dark text-white">Try Demo</Button></li>
+              <li><Button className="w-full bg-purple hover:bg-purple-dark text-white" onClick={onRequestDemo}>Request Demo</Button></li>
             </ul>
           </div>
         </div>
