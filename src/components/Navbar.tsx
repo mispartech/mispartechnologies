@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
 
 interface NavbarProps {
   onRequestDemo?: () => void;
 }
 
 const Navbar = ({ onRequestDemo }: NavbarProps) => {
+  const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -45,7 +47,13 @@ const Navbar = ({ onRequestDemo }: NavbarProps) => {
               <li><a href="#roadmap" className="text-gray-800 hover:text-purple transition-colors">Roadmap</a></li>
               <li><a href="#demo" className="text-gray-800 hover:text-purple transition-colors">Demo</a></li>
             </ul>
-            <Button className="bg-purple hover:bg-purple-dark text-white" onClick={onRequestDemo}>Request Demo</Button>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" className="gap-2" onClick={() => navigate('/auth')}>
+                <LogIn className="w-4 h-4" />
+                Login
+              </Button>
+              <Button className="bg-purple hover:bg-purple-dark text-white" onClick={onRequestDemo}>Request Demo</Button>
+            </div>
           </div>
 
           {/* Mobile Menu Button */}
@@ -64,6 +72,10 @@ const Navbar = ({ onRequestDemo }: NavbarProps) => {
               <li><a href="#solutions" className="block text-gray-800 hover:text-purple transition-colors" onClick={toggleMenu}>Solutions</a></li>
               <li><a href="#roadmap" className="block text-gray-800 hover:text-purple transition-colors" onClick={toggleMenu}>Roadmap</a></li>
               <li><a href="#demo" className="block text-gray-800 hover:text-purple transition-colors" onClick={toggleMenu}>Demo</a></li>
+              <li><Button variant="outline" className="w-full gap-2" onClick={() => navigate('/auth')}>
+                <LogIn className="w-4 h-4" />
+                Login
+              </Button></li>
               <li><Button className="w-full bg-purple hover:bg-purple-dark text-white" onClick={onRequestDemo}>Request Demo</Button></li>
             </ul>
           </div>

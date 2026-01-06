@@ -14,7 +14,154 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      attendance: {
+        Row: {
+          confidence_score: number | null
+          created_at: string | null
+          date: string
+          face_detections: number | null
+          face_roi_url: string | null
+          id: string
+          recognized_emotion: string | null
+          time: string
+          user_id: string | null
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string | null
+          date: string
+          face_detections?: number | null
+          face_roi_url?: string | null
+          id?: string
+          recognized_emotion?: string | null
+          time: string
+          user_id?: string | null
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string | null
+          date?: string
+          face_detections?: number | null
+          face_roi_url?: string | null
+          id?: string
+          recognized_emotion?: string | null
+          time?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      face_embeddings: {
+        Row: {
+          created_at: string | null
+          embedding: Json | null
+          id: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          embedding?: Json | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          embedding?: Json | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "face_embeddings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          department: string | null
+          email: string | null
+          face_image_url: string | null
+          first_name: string | null
+          gender: string | null
+          id: string
+          last_name: string | null
+          phone_number: string | null
+          role: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          department?: string | null
+          email?: string | null
+          face_image_url?: string | null
+          first_name?: string | null
+          gender?: string | null
+          id: string
+          last_name?: string | null
+          phone_number?: string | null
+          role?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          department?: string | null
+          email?: string | null
+          face_image_url?: string | null
+          first_name?: string | null
+          gender?: string | null
+          id?: string
+          last_name?: string | null
+          phone_number?: string | null
+          role?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      temp_attendance: {
+        Row: {
+          created_at: string | null
+          date: string
+          face_detections: number | null
+          face_roi_url: string | null
+          id: string
+          temp_face_id: string
+          time: string
+        }
+        Insert: {
+          created_at?: string | null
+          date: string
+          face_detections?: number | null
+          face_roi_url?: string | null
+          id?: string
+          temp_face_id: string
+          time: string
+        }
+        Update: {
+          created_at?: string | null
+          date?: string
+          face_detections?: number | null
+          face_roi_url?: string | null
+          id?: string
+          temp_face_id?: string
+          time?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
