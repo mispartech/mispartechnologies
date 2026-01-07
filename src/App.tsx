@@ -6,6 +6,13 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import DashboardLayout from "./components/dashboard/DashboardLayout";
+import DashboardHome from "./pages/dashboard/DashboardHome";
+import MembersList from "./pages/dashboard/MembersList";
+import TempMembersList from "./pages/dashboard/TempMembersList";
+import AttendanceCapture from "./pages/dashboard/AttendanceCapture";
+import AttendanceLogs from "./pages/dashboard/AttendanceLogs";
+import DepartmentsList from "./pages/dashboard/DepartmentsList";
 
 const queryClient = new QueryClient();
 
@@ -18,6 +25,17 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
+          
+          {/* Dashboard Routes */}
+          <Route path="/dashboard" element={<DashboardLayout />}>
+            <Route index element={<DashboardHome />} />
+            <Route path="members" element={<MembersList />} />
+            <Route path="temp-members" element={<TempMembersList />} />
+            <Route path="attendance" element={<AttendanceCapture />} />
+            <Route path="attendance-logs" element={<AttendanceLogs />} />
+            <Route path="departments" element={<DepartmentsList />} />
+          </Route>
+          
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
