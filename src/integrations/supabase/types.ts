@@ -58,6 +58,44 @@ export type Database = {
           },
         ]
       }
+      departments: {
+        Row: {
+          allowed_roles: string[] | null
+          created_at: string
+          department_head_id: string | null
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          allowed_roles?: string[] | null
+          created_at?: string
+          department_head_id?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          allowed_roles?: string[] | null
+          created_at?: string
+          department_head_id?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "departments_department_head_id_fkey"
+            columns: ["department_head_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       face_embeddings: {
         Row: {
           created_at: string | null
@@ -94,6 +132,7 @@ export type Database = {
         Row: {
           created_at: string | null
           department: string | null
+          department_id: string | null
           email: string | null
           face_image_url: string | null
           first_name: string | null
@@ -107,6 +146,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           department?: string | null
+          department_id?: string | null
           email?: string | null
           face_image_url?: string | null
           first_name?: string | null
@@ -120,6 +160,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           department?: string | null
+          department_id?: string | null
           email?: string | null
           face_image_url?: string | null
           first_name?: string | null
@@ -130,7 +171,15 @@ export type Database = {
           role?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       temp_attendance: {
         Row: {
