@@ -128,6 +128,66 @@ export type Database = {
           },
         ]
       }
+      organizations: {
+        Row: {
+          address: string | null
+          city: string | null
+          country: string | null
+          created_at: string | null
+          email: string | null
+          features_enabled: string[] | null
+          id: string
+          industry: string | null
+          logo_url: string | null
+          name: string
+          onboarding_completed: boolean | null
+          phone: string | null
+          settings: Json | null
+          size_range: string | null
+          type: Database["public"]["Enums"]["organization_type"]
+          updated_at: string | null
+          website: string | null
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string | null
+          email?: string | null
+          features_enabled?: string[] | null
+          id?: string
+          industry?: string | null
+          logo_url?: string | null
+          name: string
+          onboarding_completed?: boolean | null
+          phone?: string | null
+          settings?: Json | null
+          size_range?: string | null
+          type?: Database["public"]["Enums"]["organization_type"]
+          updated_at?: string | null
+          website?: string | null
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string | null
+          email?: string | null
+          features_enabled?: string[] | null
+          id?: string
+          industry?: string | null
+          logo_url?: string | null
+          name?: string
+          onboarding_completed?: boolean | null
+          phone?: string | null
+          settings?: Json | null
+          size_range?: string | null
+          type?: Database["public"]["Enums"]["organization_type"]
+          updated_at?: string | null
+          website?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -139,6 +199,7 @@ export type Database = {
           gender: string | null
           id: string
           last_name: string | null
+          organization_id: string | null
           phone_number: string | null
           role: string | null
           updated_at: string | null
@@ -153,6 +214,7 @@ export type Database = {
           gender?: string | null
           id: string
           last_name?: string | null
+          organization_id?: string | null
           phone_number?: string | null
           role?: string | null
           updated_at?: string | null
@@ -167,6 +229,7 @@ export type Database = {
           gender?: string | null
           id?: string
           last_name?: string | null
+          organization_id?: string | null
           phone_number?: string | null
           role?: string | null
           updated_at?: string | null
@@ -177,6 +240,13 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -211,15 +281,70 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          organization_id: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          organization_id?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          organization_id?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_organization: { Args: { _user_id: string }; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_org_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      app_role:
+        | "super_admin"
+        | "admin"
+        | "manager"
+        | "member"
+        | "parish_pastor"
+        | "secretary"
+        | "usher"
+      organization_type:
+        | "church"
+        | "corporate"
+        | "school"
+        | "hospital"
+        | "government"
+        | "nonprofit"
+        | "other"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -346,6 +471,25 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: [
+        "super_admin",
+        "admin",
+        "manager",
+        "member",
+        "parish_pastor",
+        "secretary",
+        "usher",
+      ],
+      organization_type: [
+        "church",
+        "corporate",
+        "school",
+        "hospital",
+        "government",
+        "nonprofit",
+        "other",
+      ],
+    },
   },
 } as const
