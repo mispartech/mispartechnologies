@@ -25,15 +25,30 @@ const Auth = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    const checkUserAndRedirect = async (userId: string) => {
+      // Check if user has completed onboarding by checking organization_id
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', userId)
+        .single();
+
+      if (profile?.organization_id) {
+        navigate('/dashboard');
+      } else {
+        navigate('/onboarding');
+      }
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        navigate('/');
+        checkUserAndRedirect(session.user.id);
       }
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        navigate('/');
+        checkUserAndRedirect(session.user.id);
       }
     });
 

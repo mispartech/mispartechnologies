@@ -29,31 +29,31 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
       label: 'Dashboard', 
       icon: LayoutDashboard, 
       href: '/dashboard',
-      roles: ['super_admin', 'admin', 'parish_pastor', 'department_head', 'member']
+      roles: ['super_admin', 'admin', 'manager', 'member', 'parish_pastor', 'secretary', 'usher']
     },
     { 
       label: 'Mark Attendance', 
       icon: ScanFace, 
       href: '/dashboard/attendance',
-      roles: ['super_admin', 'admin', 'usher_admin', 'ushering_head_admin']
+      roles: ['super_admin', 'admin', 'manager', 'usher', 'secretary']
     },
     { 
       label: 'Attendance Logs', 
       icon: ClipboardList, 
       href: '/dashboard/attendance-logs',
-      roles: ['super_admin', 'admin', 'parish_pastor', 'department_head', 'ushering_head_admin']
+      roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'secretary']
     },
     { 
       label: 'Members', 
       icon: Users, 
       href: '/dashboard/members',
-      roles: ['super_admin', 'admin', 'parish_pastor', 'ushering_head_admin']
+      roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'secretary']
     },
     { 
       label: 'Temporary Members', 
       icon: UserPlus, 
       href: '/dashboard/temp-members',
-      roles: ['super_admin', 'admin', 'parish_pastor', 'ushering_head_admin']
+      roles: ['super_admin', 'admin', 'manager', 'secretary']
     },
     { 
       label: 'Departments', 
@@ -64,20 +64,20 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
     { 
       label: 'Face Gallery', 
       icon: Image, 
-      href: '/dashboard/gallery',
+      href: '/dashboard/face-gallery',
       roles: ['super_admin', 'admin', 'parish_pastor']
     },
     { 
       label: 'Reports', 
       icon: FileText, 
       href: '/dashboard/reports',
-      roles: ['super_admin', 'admin', 'parish_pastor', 'department_head']
+      roles: ['super_admin', 'admin', 'manager', 'parish_pastor']
     },
     { 
       label: 'My Profile', 
       icon: UserCheck, 
       href: '/dashboard/profile',
-      roles: ['super_admin', 'admin', 'parish_pastor', 'department_head', 'member', 'usher_admin', 'ushering_head_admin']
+      roles: ['super_admin', 'admin', 'manager', 'member', 'parish_pastor', 'secretary', 'usher']
     },
     { 
       label: 'Settings', 
