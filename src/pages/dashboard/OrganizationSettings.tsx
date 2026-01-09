@@ -75,8 +75,8 @@ const OrganizationSettings = () => {
         settings: (typeof data.settings === 'object' && data.settings !== null) ? data.settings as Record<string, any> : {},
       };
       setOrganization(orgData);
-      if (orgData.settings) {
-        setSettings(prev => ({ ...prev, ...data.settings }));
+      if (orgData.settings && typeof orgData.settings === 'object') {
+        setSettings(prev => ({ ...prev, ...(orgData.settings as Record<string, any>) }));
       }
     } catch (error) {
       console.error('Error fetching organization:', error);
