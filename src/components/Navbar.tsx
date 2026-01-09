@@ -36,7 +36,7 @@ const Navbar = ({ onRequestDemo }: NavbarProps) => {
       <div className="container-custom">
         <div className="flex items-center justify-between">
           <a href="#" className="flex items-center">
-            <span className="text-2xl font-montserrat font-bold text-purple">Mispar<span className="text-purple-light">Tech</span></span>
+            <span className="text-2xl font-montserrat font-bold text-purple">Mispar <span className="text-purple-light">Technologies</span></span>
           </a>
 
           {/* Desktop Navigation */}

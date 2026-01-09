@@ -250,7 +250,7 @@ const Onboarding = () => {
 
       toast({
         title: 'Setup Complete!',
-        description: 'Your organization is ready. Welcome to FaceSync!',
+        description: 'Your organization is ready. Welcome to Mispar Technologies!',
       });
 
       navigate('/dashboard');
@@ -283,7 +283,7 @@ const Onboarding = () => {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
             <Scan className="w-10 h-10 text-primary" />
-            <span className="text-3xl font-bold text-foreground">FaceSync</span>
+            <span className="text-3xl font-bold text-foreground">Mispar Technologies</span>
           </div>
           <h1 className="text-2xl font-semibold text-foreground mb-2">
             Set Up Your Organization

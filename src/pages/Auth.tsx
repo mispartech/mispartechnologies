@@ -176,7 +176,7 @@ const Auth = () => {
           <div className="text-center mb-8">
             <div className="flex items-center justify-center gap-2 mb-4">
               <Scan className="w-8 h-8 text-primary" />
-              <span className="text-2xl font-bold text-foreground">FaceSync</span>
+              <span className="text-2xl font-bold text-foreground">Mispar Technologies</span>
             </div>
             <h1 className="text-2xl font-semibold text-foreground">
               {isLogin ? 'Welcome Back' : 'Create Account'}
