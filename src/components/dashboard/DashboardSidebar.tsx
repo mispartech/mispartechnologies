@@ -113,7 +113,7 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
           {isOpen ? (
             <Link to="/dashboard" className="flex items-center gap-2">
               <ScanFace className="w-8 h-8 text-primary" />
-              <span className="text-xl font-bold text-foreground">FaceSync</span>
+              <span className="text-xl font-bold text-foreground">Mispar Technologies</span>
             </Link>
           ) : (
             <Link to="/dashboard" className="mx-auto">
@@ -180,7 +180,7 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
         <div className="flex items-center justify-between h-16 px-4 border-b border-border">
           <Link to="/dashboard" className="flex items-center gap-2">
             <ScanFace className="w-8 h-8 text-primary" />
-            <span className="text-xl font-bold text-foreground">FaceSync</span>
+            <span className="text-xl font-bold text-foreground">Mispar Technologies</span>
           </Link>
         </div>
 
