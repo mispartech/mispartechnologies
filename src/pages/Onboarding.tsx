@@ -43,6 +43,9 @@ interface OnboardingData {
   adminRole: string;
 }
 
+const ONBOARDING_STORAGE_KEY = 'mispar_onboarding_data';
+const ONBOARDING_STEP_KEY = 'mispar_onboarding_step';
+
 const organizationTypes = [
   { type: 'church' as const, label: 'Church/Religious', icon: Church, description: 'Churches, mosques, temples, and religious organizations' },
   { type: 'corporate' as const, label: 'Corporate', icon: Briefcase, description: 'Businesses, companies, and enterprises' },
@@ -117,10 +120,8 @@ const rolesByType: Record<OrganizationType, string[]> = {
   other: ['Administrator', 'Manager', 'Supervisor', 'Coordinator', 'Other'],
 };
 
-const Onboarding = () => {
-  const [step, setStep] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
-  const [data, setData] = useState<OnboardingData>({
+const getInitialData = (): OnboardingData => {
+  const defaultData: OnboardingData = {
     organizationType: null,
     organizationName: '',
     industry: '',
@@ -135,11 +136,58 @@ const Onboarding = () => {
     adminFirstName: '',
     adminLastName: '',
     adminRole: '',
-  });
+  };
+
+  try {
+    const saved = sessionStorage.getItem(ONBOARDING_STORAGE_KEY);
+    if (saved) {
+      return { ...defaultData, ...JSON.parse(saved) };
+    }
+  } catch (e) {
+    console.error('Failed to load onboarding data from session:', e);
+  }
+  return defaultData;
+};
+
+const getInitialStep = (): number => {
+  try {
+    const saved = sessionStorage.getItem(ONBOARDING_STEP_KEY);
+    if (saved) {
+      const step = parseInt(saved, 10);
+      if (step >= 1 && step <= 4) return step;
+    }
+  } catch (e) {
+    console.error('Failed to load onboarding step from session:', e);
+  }
+  return 1;
+};
+
+const Onboarding = () => {
+  const [step, setStep] = useState(getInitialStep);
+  const [isLoading, setIsLoading] = useState(false);
+  const [data, setData] = useState<OnboardingData>(getInitialData);
   
   const navigate = useNavigate();
   const { toast } = useToast();
   const totalSteps = 4;
+
+  // Save data to session storage whenever it changes
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.error('Failed to save onboarding data to session:', e);
+    }
+  }, [data]);
+
+  // Save step to session storage whenever it changes
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(ONBOARDING_STEP_KEY, step.toString());
+    } catch (e) {
+      console.error('Failed to save onboarding step to session:', e);
+    }
+  }, [step]);
 
   useEffect(() => {
     checkAuth();
@@ -160,19 +208,26 @@ const Onboarding = () => {
       .single();
     
     if (profile?.organization_id) {
-      // Already onboarded, redirect to dashboard
+      // Already onboarded, clear session and redirect to dashboard
+      clearOnboardingSession();
       navigate('/dashboard');
       return;
     }
     
-    if (profile) {
+    // Only pre-fill if not already set in session
+    if (profile && !data.adminFirstName && !data.adminLastName) {
       setData(prev => ({
         ...prev,
-        adminFirstName: profile.first_name || '',
-        adminLastName: profile.last_name || '',
-        email: profile.email || session.user.email || '',
+        adminFirstName: prev.adminFirstName || profile.first_name || '',
+        adminLastName: prev.adminLastName || profile.last_name || '',
+        email: prev.email || profile.email || session.user.email || '',
       }));
     }
+  };
+
+  const clearOnboardingSession = () => {
+    sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    sessionStorage.removeItem(ONBOARDING_STEP_KEY);
   };
 
   const handleTypeSelect = (type: OrganizationType) => {
@@ -248,6 +303,9 @@ const Onboarding = () => {
 
       if (roleError) throw roleError;
 
+      // Clear session storage on success
+      clearOnboardingSession();
+
       toast({
         title: 'Setup Complete!',
         description: 'Your organization is ready. Welcome to Mispar Technologies!',
@@ -282,56 +340,56 @@ const Onboarding = () => {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Scan className="w-10 h-10 text-primary" />
-            <span className="text-3xl font-bold text-foreground">Mispar Technologies</span>
+            <Scan className="w-8 h-8 text-primary" />
+            <span className="text-2xl font-bold text-foreground">Mispar Technologies</span>
           </div>
-          <h1 className="text-2xl font-semibold text-foreground mb-2">
+          <h1 className="text-xl font-semibold text-foreground mb-1">
             Set Up Your Organization
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Let's personalize your face recognition attendance system
           </p>
         </div>
 
         {/* Progress */}
-        <div className="mb-8">
-          <div className="flex justify-between text-sm text-muted-foreground mb-2">
+        <div className="mb-6">
+          <div className="flex justify-between text-xs text-muted-foreground mb-2">
             <span>Step {step} of {totalSteps}</span>
             <span>{Math.round((step / totalSteps) * 100)}% Complete</span>
           </div>
-          <Progress value={(step / totalSteps) * 100} className="h-2" />
+          <Progress value={(step / totalSteps) * 100} className="h-1.5" />
         </div>
 
         {/* Step Content */}
-        <Card className="mb-8">
+        <Card className="mb-6 border border-border/50 shadow-sm">
           {step === 1 && (
             <>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-primary" />
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Building2 className="w-4 h-4 text-primary" />
                   What type of organization are you?
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-xs">
                   This helps us customize the experience for your specific needs
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {organizationTypes.map(({ type, label, icon: Icon, description }) => (
                     <button
                       key={type}
                       onClick={() => handleTypeSelect(type)}
-                      className={`p-4 rounded-lg border-2 text-left transition-all hover:border-primary/50 ${
+                      className={`p-4 rounded-lg border text-left transition-all hover:border-primary/50 hover:shadow-sm ${
                         data.organizationType === type
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border'
+                          ? 'border-primary bg-primary/5 shadow-sm'
+                          : 'border-border/60 bg-card'
                       }`}
                     >
-                      <Icon className={`w-8 h-8 mb-3 ${
+                      <Icon className={`w-5 h-5 mb-2 ${
                         data.organizationType === type ? 'text-primary' : 'text-muted-foreground'
                       }`} />
-                      <h3 className="font-semibold text-foreground mb-1">{label}</h3>
-                      <p className="text-sm text-muted-foreground">{description}</p>
+                      <h3 className="text-sm font-medium text-foreground mb-0.5">{label}</h3>
+                      <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
                     </button>
                   ))}
                 </div>
@@ -341,30 +399,30 @@ const Onboarding = () => {
 
           {step === 2 && (
             <>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-primary" />
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Settings className="w-4 h-4 text-primary" />
                   Organization Details
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-xs">
                   Tell us more about your {organizationTypes.find(o => o.type === data.organizationType)?.label.toLowerCase()}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
-                    <Label htmlFor="orgName">Organization Name *</Label>
+                    <Label htmlFor="orgName" className="text-sm font-medium">Organization Name *</Label>
                     <Input
                       id="orgName"
                       value={data.organizationName}
                       onChange={(e) => setData(prev => ({ ...prev, organizationName: e.target.value }))}
                       placeholder={data.organizationType === 'church' ? 'e.g., Grace Community Church' : 'e.g., Acme Corporation'}
-                      className="mt-1"
+                      className="mt-1.5 h-9"
                     />
                   </div>
 
-                  <div>
-                    <Label>Staff/Member Size *</Label>
+                  <div className="md:col-span-2">
+                    <Label className="text-sm font-medium">Staff/Member Size *</Label>
                     <div className="flex flex-wrap gap-2 mt-2">
                       {sizeRanges.map(size => (
                         <Button
@@ -373,6 +431,7 @@ const Onboarding = () => {
                           variant={data.sizeRange === size ? 'default' : 'outline'}
                           size="sm"
                           onClick={() => setData(prev => ({ ...prev, sizeRange: size }))}
+                          className="h-8 text-xs px-3"
                         >
                           {size}
                         </Button>
@@ -382,70 +441,70 @@ const Onboarding = () => {
 
                   {data.organizationType !== 'church' && (
                     <div>
-                      <Label htmlFor="industry">Industry</Label>
+                      <Label htmlFor="industry" className="text-sm font-medium">Industry</Label>
                       <Input
                         id="industry"
                         value={data.industry}
                         onChange={(e) => setData(prev => ({ ...prev, industry: e.target.value }))}
                         placeholder="e.g., Technology, Healthcare"
-                        className="mt-1"
+                        className="mt-1.5 h-9"
                       />
                     </div>
                   )}
 
                   <div className="md:col-span-2">
-                    <Label htmlFor="address">Address</Label>
+                    <Label htmlFor="address" className="text-sm font-medium">Address</Label>
                     <Textarea
                       id="address"
                       value={data.address}
                       onChange={(e) => setData(prev => ({ ...prev, address: e.target.value }))}
                       placeholder="Street address"
-                      className="mt-1"
+                      className="mt-1.5 min-h-[60px] resize-none"
                       rows={2}
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="city">City</Label>
+                    <Label htmlFor="city" className="text-sm font-medium">City</Label>
                     <Input
                       id="city"
                       value={data.city}
                       onChange={(e) => setData(prev => ({ ...prev, city: e.target.value }))}
                       placeholder="e.g., Lagos"
-                      className="mt-1"
+                      className="mt-1.5 h-9"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="country">Country</Label>
+                    <Label htmlFor="country" className="text-sm font-medium">Country</Label>
                     <Input
                       id="country"
                       value={data.country}
                       onChange={(e) => setData(prev => ({ ...prev, country: e.target.value }))}
                       placeholder="e.g., Nigeria"
-                      className="mt-1"
+                      className="mt-1.5 h-9"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="phone">Phone</Label>
+                    <Label htmlFor="phone" className="text-sm font-medium">Phone</Label>
                     <Input
                       id="phone"
                       value={data.phone}
                       onChange={(e) => setData(prev => ({ ...prev, phone: e.target.value }))}
                       placeholder="+234..."
-                      className="mt-1"
+                      className="mt-1.5 h-9"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="website">Website</Label>
+                    <Label htmlFor="website" className="text-sm font-medium">Website</Label>
                     <Input
                       id="website"
                       value={data.website}
                       onChange={(e) => setData(prev => ({ ...prev, website: e.target.value }))}
                       placeholder="https://..."
-                      className="mt-1"
+                      className="mt-1.5 h-9"
                     />
                   </div>
                 </div>
@@ -455,40 +514,40 @@ const Onboarding = () => {
 
           {step === 3 && data.organizationType && (
             <>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Check className="w-5 h-5 text-primary" />
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Check className="w-4 h-4 text-primary" />
                   Select Features
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-xs">
                   Choose the features you want to enable for your organization
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {featuresByType[data.organizationType].map(feature => (
                     <button
                       key={feature.id}
                       onClick={() => handleFeatureToggle(feature.id)}
-                      className={`p-4 rounded-lg border-2 text-left transition-all hover:border-primary/50 ${
+                      className={`p-4 rounded-lg border text-left transition-all hover:border-primary/50 hover:shadow-sm ${
                         data.features.includes(feature.id)
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border'
+                          ? 'border-primary bg-primary/5 shadow-sm'
+                          : 'border-border/60 bg-card'
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className={`mt-1 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
                           data.features.includes(feature.id)
                             ? 'border-primary bg-primary'
-                            : 'border-muted-foreground'
+                            : 'border-muted-foreground/50'
                         }`}>
                           {data.features.includes(feature.id) && (
-                            <Check className="w-3 h-3 text-primary-foreground" />
+                            <Check className="w-2.5 h-2.5 text-primary-foreground" />
                           )}
                         </div>
-                        <div>
-                          <h3 className="font-medium text-foreground">{feature.label}</h3>
-                          <p className="text-sm text-muted-foreground">{feature.description}</p>
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-medium text-foreground leading-tight">{feature.label}</h3>
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{feature.description}</p>
                         </div>
                       </div>
                     </button>
@@ -500,41 +559,41 @@ const Onboarding = () => {
 
           {step === 4 && data.organizationType && (
             <>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-primary" />
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Users className="w-4 h-4 text-primary" />
                   Admin Setup
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-xs">
                   Set up your administrator profile
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="firstName">First Name *</Label>
+                    <Label htmlFor="firstName" className="text-sm font-medium">First Name *</Label>
                     <Input
                       id="firstName"
                       value={data.adminFirstName}
                       onChange={(e) => setData(prev => ({ ...prev, adminFirstName: e.target.value }))}
                       placeholder="John"
-                      className="mt-1"
+                      className="mt-1.5 h-9"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="lastName">Last Name *</Label>
+                    <Label htmlFor="lastName" className="text-sm font-medium">Last Name *</Label>
                     <Input
                       id="lastName"
                       value={data.adminLastName}
                       onChange={(e) => setData(prev => ({ ...prev, adminLastName: e.target.value }))}
                       placeholder="Doe"
-                      className="mt-1"
+                      className="mt-1.5 h-9"
                     />
                   </div>
 
                   <div className="md:col-span-2">
-                    <Label>Your Role *</Label>
+                    <Label className="text-sm font-medium">Your Role *</Label>
                     <div className="flex flex-wrap gap-2 mt-2">
                       {rolesByType[data.organizationType].map(role => (
                         <Button
@@ -543,6 +602,7 @@ const Onboarding = () => {
                           variant={data.adminRole === role ? 'default' : 'outline'}
                           size="sm"
                           onClick={() => setData(prev => ({ ...prev, adminRole: role }))}
+                          className="h-8 text-xs px-3"
                         >
                           {role}
                         </Button>
@@ -552,24 +612,24 @@ const Onboarding = () => {
                 </div>
 
                 {/* Summary */}
-                <div className="mt-8 p-4 rounded-lg bg-muted/50">
-                  <h4 className="font-semibold text-foreground mb-3">Setup Summary</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
+                <div className="mt-6 p-4 rounded-lg bg-muted/30 border border-border/50">
+                  <h4 className="text-sm font-semibold text-foreground mb-3">Setup Summary</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Organization:</span>
-                      <span className="font-medium">{data.organizationName}</span>
+                      <span className="font-medium text-foreground">{data.organizationName}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Type:</span>
-                      <span className="font-medium capitalize">{data.organizationType}</span>
+                      <span className="font-medium text-foreground capitalize">{data.organizationType}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Size:</span>
-                      <span className="font-medium">{data.sizeRange} members</span>
+                      <span className="font-medium text-foreground">{data.sizeRange} members</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Features:</span>
-                      <span className="font-medium">{data.features.length} selected</span>
+                      <span className="font-medium text-foreground">{data.features.length} selected</span>
                     </div>
                   </div>
                 </div>
@@ -584,9 +644,9 @@ const Onboarding = () => {
             variant="outline"
             onClick={() => setStep(s => Math.max(1, s - 1))}
             disabled={step === 1}
-            className="gap-2"
+            className="gap-2 h-9 text-sm"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-3.5 h-3.5" />
             Back
           </Button>
 
@@ -594,19 +654,19 @@ const Onboarding = () => {
             <Button
               onClick={() => setStep(s => Math.min(totalSteps, s + 1))}
               disabled={!canProceed()}
-              className="gap-2"
+              className="gap-2 h-9 text-sm"
             >
               Continue
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-3.5 h-3.5" />
             </Button>
           ) : (
             <Button
               onClick={handleSubmit}
               disabled={!canProceed() || isLoading}
-              className="gap-2"
+              className="gap-2 h-9 text-sm"
             >
               {isLoading ? 'Setting up...' : 'Complete Setup'}
-              <Check className="w-4 h-4" />
+              <Check className="w-3.5 h-3.5" />
             </Button>
           )}
         </div>
