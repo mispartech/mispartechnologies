@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,12 +10,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  Building2, 
-  Church, 
-  GraduationCap, 
-  Hospital, 
-  Landmark, 
+import {
+  deleteOnboardingSession,
+  getOnboardingStorageKeys,
+  loadOnboardingSession,
+  saveOnboardingSession,
+} from '@/lib/onboardingSession';
+import {
+  Building2,
+  Church,
+  GraduationCap,
+  Hospital,
+  Landmark,
   Heart,
   Briefcase,
   Users,
@@ -43,8 +51,22 @@ interface OnboardingData {
   adminRole: string;
 }
 
-const ONBOARDING_STORAGE_KEY = 'mispar_onboarding_data';
-const ONBOARDING_STEP_KEY = 'mispar_onboarding_step';
+const defaultData: OnboardingData = {
+  organizationType: null,
+  organizationName: '',
+  industry: '',
+  sizeRange: '',
+  address: '',
+  city: '',
+  country: '',
+  phone: '',
+  email: '',
+  website: '',
+  features: [],
+  adminFirstName: '',
+  adminLastName: '',
+  adminRole: '',
+};
 
 const organizationTypes = [
   { type: 'church' as const, label: 'Church/Religious', icon: Church, description: 'Churches, mosques, temples, and religious organizations' },
@@ -120,115 +142,131 @@ const rolesByType: Record<OrganizationType, string[]> = {
   other: ['Administrator', 'Manager', 'Supervisor', 'Coordinator', 'Other'],
 };
 
-const getInitialData = (): OnboardingData => {
-  const defaultData: OnboardingData = {
-    organizationType: null,
-    organizationName: '',
-    industry: '',
-    sizeRange: '',
-    address: '',
-    city: '',
-    country: '',
-    phone: '',
-    email: '',
-    website: '',
-    features: [],
-    adminFirstName: '',
-    adminLastName: '',
-    adminRole: '',
-  };
-
-  try {
-    const saved = sessionStorage.getItem(ONBOARDING_STORAGE_KEY);
-    if (saved) {
-      return { ...defaultData, ...JSON.parse(saved) };
-    }
-  } catch (e) {
-    console.error('Failed to load onboarding data from session:', e);
-  }
-  return defaultData;
-};
-
-const getInitialStep = (): number => {
-  try {
-    const saved = sessionStorage.getItem(ONBOARDING_STEP_KEY);
-    if (saved) {
-      const step = parseInt(saved, 10);
-      if (step >= 1 && step <= 4) return step;
-    }
-  } catch (e) {
-    console.error('Failed to load onboarding step from session:', e);
-  }
-  return 1;
-};
-
 const Onboarding = () => {
-  const [step, setStep] = useState(getInitialStep);
+  const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-  const [data, setData] = useState<OnboardingData>(getInitialData);
-  
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [data, setData] = useState<OnboardingData>(defaultData);
+
   const navigate = useNavigate();
   const { toast } = useToast();
   const totalSteps = 4;
 
-  // Save data to session storage whenever it changes
+  const didHydrateRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
+
+  const storageKeys = useMemo(() => {
+    if (!userId) return null;
+    return getOnboardingStorageKeys(userId);
+  }, [userId]);
+
   useEffect(() => {
+    const run = async () => {
+      setIsAuthLoading(true);
+      const { data: userRes, error: userErr } = await supabase.auth.getUser();
+      if (userErr) console.warn('Auth check error:', userErr);
+
+      const user = userRes.user;
+      if (!user) {
+        navigate('/auth');
+        return;
+      }
+
+      setUserId(user.id);
+
+      // Pre-fill admin name from profile and detect already-onboarded users
+      const { data: profile, error: profileErr } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, email, organization_id')
+        .eq('id', user.id)
+        .single();
+
+      if (profileErr) console.warn('Profile fetch error:', profileErr);
+
+      if (profile?.organization_id) {
+        // Already onboarded
+        try {
+          await deleteOnboardingSession(user.id);
+        } catch {
+          // ignore
+        }
+        if (storageKeys) {
+          sessionStorage.removeItem(storageKeys.data);
+          sessionStorage.removeItem(storageKeys.step);
+        }
+        navigate('/dashboard');
+        return;
+      }
+
+      // Hydrate progress (backend-first, then sessionStorage fallback)
+      try {
+        const persisted = await loadOnboardingSession(user.id);
+        if (persisted && !didHydrateRef.current) {
+          didHydrateRef.current = true;
+          setStep(Math.min(4, Math.max(1, persisted.step || 1)));
+          setData((prev) => ({ ...prev, ...(persisted.data as Partial<OnboardingData>) }));
+        }
+      } catch (e) {
+        console.warn('Failed to load onboarding session from backend:', e);
+      }
+
+      // SessionStorage fallback / merge (per-user)
+      if (storageKeys && !didHydrateRef.current) {
+        try {
+          const savedData = sessionStorage.getItem(storageKeys.data);
+          const savedStep = sessionStorage.getItem(storageKeys.step);
+          if (savedData) setData((prev) => ({ ...prev, ...JSON.parse(savedData) }));
+          if (savedStep) {
+            const n = parseInt(savedStep, 10);
+            if (!Number.isNaN(n)) setStep(Math.min(4, Math.max(1, n)));
+          }
+        } catch (e) {
+          console.warn('Failed to load onboarding session from sessionStorage:', e);
+        }
+      }
+
+      // Only pre-fill if not already set
+      if (profile) {
+        setData((prev) => ({
+          ...prev,
+          adminFirstName: prev.adminFirstName || profile.first_name || '',
+          adminLastName: prev.adminLastName || profile.last_name || '',
+          email: prev.email || profile.email || user.email || '',
+        }));
+      }
+
+      setIsAuthLoading(false);
+    };
+
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]);
+
+  // Persist onboarding progress (backend + sessionStorage), debounced
+  useEffect(() => {
+    if (!userId || !storageKeys || isAuthLoading) return;
+
+    // sessionStorage (fast reload)
     try {
-      sessionStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error('Failed to save onboarding data to session:', e);
+      sessionStorage.setItem(storageKeys.data, JSON.stringify(data));
+      sessionStorage.setItem(storageKeys.step, String(step));
+    } catch {
+      // ignore
     }
-  }, [data]);
 
-  // Save step to session storage whenever it changes
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(ONBOARDING_STEP_KEY, step.toString());
-    } catch (e) {
-      console.error('Failed to save onboarding step to session:', e);
-    }
-  }, [step]);
+    // backend (cross-refresh + reliable)
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      saveOnboardingSession(userId, { step, data: data as unknown as Record<string, unknown> }).catch((e) => {
+        console.warn('Failed to save onboarding session:', e);
+      });
+    }, 500);
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      navigate('/auth');
-      return;
-    }
-    
-    // Pre-fill admin name from profile
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('first_name, last_name, email, organization_id')
-      .eq('id', session.user.id)
-      .single();
-    
-    if (profile?.organization_id) {
-      // Already onboarded, clear session and redirect to dashboard
-      clearOnboardingSession();
-      navigate('/dashboard');
-      return;
-    }
-    
-    // Only pre-fill if not already set in session
-    if (profile && !data.adminFirstName && !data.adminLastName) {
-      setData(prev => ({
-        ...prev,
-        adminFirstName: prev.adminFirstName || profile.first_name || '',
-        adminLastName: prev.adminLastName || profile.last_name || '',
-        email: prev.email || profile.email || session.user.email || '',
-      }));
-    }
-  };
-
-  const clearOnboardingSession = () => {
-    sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
-    sessionStorage.removeItem(ONBOARDING_STEP_KEY);
-  };
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    };
+  }, [data, step, userId, storageKeys, isAuthLoading]);
 
   const handleTypeSelect = (type: OrganizationType) => {
     setData(prev => ({ ...prev, organizationType: type, features: [], adminRole: '' }));
