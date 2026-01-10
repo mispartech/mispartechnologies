@@ -293,13 +293,20 @@ const Onboarding = () => {
 
     setIsLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
+      const { data: userRes, error: userErr } = await supabase.auth.getUser();
+      if (userErr) throw userErr;
+      const user = userRes.user;
+      if (!user) throw new Error('You are not logged in. Please sign in again and retry.');
 
-      // Create organization
-      const { data: org, error: orgError } = await supabase
+      // IMPORTANT: avoid `.select()` on organizations here.
+      // The current SELECT policy allows reading only via the user's profile.organization_id,
+      // so selecting the freshly inserted row would fail before we update the profile.
+      const orgId = crypto.randomUUID();
+
+      const { error: orgError } = await supabase
         .from('organizations')
         .insert({
+          id: orgId,
           name: data.organizationName,
           type: data.organizationType,
           industry: data.industry,
@@ -312,38 +319,34 @@ const Onboarding = () => {
           website: data.website,
           features_enabled: data.features,
           onboarding_completed: true,
-        })
-        .select()
-        .single();
+        } as never);
 
       if (orgError) throw orgError;
 
-      // Update profile with organization
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
-          organization_id: org.id,
+          organization_id: orgId,
           first_name: data.adminFirstName,
           last_name: data.adminLastName,
         })
-        .eq('id', session.user.id);
+        .eq('id', user.id);
 
       if (profileError) throw profileError;
 
-      // Assign admin role
       const { error: roleError } = await supabase
         .from('user_roles')
         .insert({
-          user_id: session.user.id,
+          user_id: user.id,
           role: 'super_admin',
-          organization_id: org.id,
+          organization_id: orgId,
         });
 
       if (roleError) throw roleError;
 
-      // Clear session storage on success
+      // Clear persisted progress on success
       try {
-        await deleteOnboardingSession(session.user.id);
+        await deleteOnboardingSession(user.id);
       } catch {
         // ignore cleanup errors
       }
@@ -360,9 +363,24 @@ const Onboarding = () => {
       navigate('/dashboard');
     } catch (error: any) {
       console.error('Onboarding error:', error);
+
+      const code = error?.code as string | undefined;
+      const status = error?.status as number | undefined;
+
+      let description =
+        error?.message ||
+        'We could not complete setup. Please try again.';
+
+      if (code === '42501' || status === 403) {
+        description =
+          'Setup couldn’t create your organization due to a permissions rule. '
+          + 'This usually happens if your session is missing/expired, or if the backend policy blocks the insert. '
+          + 'Please sign out and sign back in, then retry. If it still fails, tell me the exact error code shown below.';
+      }
+
       toast({
         title: 'Setup Failed',
-        description: error.message || 'An error occurred during setup.',
+        description,
         variant: 'destructive',
       });
     } finally {
@@ -381,342 +399,340 @@ const Onboarding = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 py-8 px-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Scan className="w-8 h-8 text-primary" />
-            <span className="text-2xl font-bold text-foreground">Mispar Technologies</span>
-          </div>
-          <h1 className="text-xl font-semibold text-foreground mb-1">
-            Set Up Your Organization
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Let's personalize your face recognition attendance system
-          </p>
-        </div>
+    <div className="min-h-screen">
+      <Navbar />
 
-        {/* Progress */}
-        <div className="mb-6">
-          <div className="flex justify-between text-xs text-muted-foreground mb-2">
-            <span>Step {step} of {totalSteps}</span>
-            <span>{Math.round((step / totalSteps) * 100)}% Complete</span>
-          </div>
-          <Progress value={(step / totalSteps) * 100} className="h-1.5" />
-        </div>
+      <main className="bg-gradient-to-br from-background via-background to-primary/5 px-4 pt-28 pb-12">
+        <div className="max-w-4xl mx-auto">
+          {/* Header */}
+          <header className="text-center mb-8">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <Scan className="w-8 h-8 text-primary" />
+              <span className="text-2xl font-bold text-foreground">Mispar Technologies</span>
+            </div>
+            <h1 className="text-xl font-semibold text-foreground mb-1">Set Up Your Organization</h1>
+            <p className="text-sm text-muted-foreground">Let's personalize your face recognition attendance system</p>
+          </header>
 
-        {/* Step Content */}
-        <Card className="mb-6 border border-border/50 shadow-sm">
-          {step === 1 && (
-            <>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                  <Building2 className="w-4 h-4 text-primary" />
-                  What type of organization are you?
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  This helps us customize the experience for your specific needs
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {organizationTypes.map(({ type, label, icon: Icon, description }) => (
-                    <button
-                      key={type}
-                      onClick={() => handleTypeSelect(type)}
-                      className={`p-4 rounded-lg border text-left transition-all hover:border-primary/50 hover:shadow-sm ${
-                        data.organizationType === type
-                          ? 'border-primary bg-primary/5 shadow-sm'
-                          : 'border-border/60 bg-card'
-                      }`}
-                    >
-                      <Icon className={`w-5 h-5 mb-2 ${
-                        data.organizationType === type ? 'text-primary' : 'text-muted-foreground'
-                      }`} />
-                      <h3 className="text-sm font-medium text-foreground mb-0.5">{label}</h3>
-                      <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
-                    </button>
-                  ))}
-                </div>
-              </CardContent>
-            </>
-          )}
+          {/* Progress */}
+          <section className="mb-6" aria-label="Onboarding progress">
+            <div className="flex justify-between text-xs text-muted-foreground mb-2">
+              <span>Step {step} of {totalSteps}</span>
+              <span>{Math.round((step / totalSteps) * 100)}% Complete</span>
+            </div>
+            <Progress value={(step / totalSteps) * 100} className="h-1.5" />
+          </section>
 
-          {step === 2 && (
-            <>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                  <Settings className="w-4 h-4 text-primary" />
-                  Organization Details
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Tell us more about your {organizationTypes.find(o => o.type === data.organizationType)?.label.toLowerCase()}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:col-span-2">
-                    <Label htmlFor="orgName" className="text-sm font-medium">Organization Name *</Label>
-                    <Input
-                      id="orgName"
-                      value={data.organizationName}
-                      onChange={(e) => setData(prev => ({ ...prev, organizationName: e.target.value }))}
-                      placeholder={data.organizationType === 'church' ? 'e.g., Grace Community Church' : 'e.g., Acme Corporation'}
-                      className="mt-1.5 h-9"
-                    />
+          {/* Step Content */}
+          <Card className="mb-6 border border-border/50 shadow-sm">
+            {step === 1 && (
+              <>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                    <Building2 className="w-4 h-4 text-primary" />
+                    What type of organization are you?
+                  </CardTitle>
+                  <CardDescription className="text-xs">This helps us customize the experience for your specific needs</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {organizationTypes.map(({ type, label, icon: Icon, description }) => (
+                      <button
+                        key={type}
+                        onClick={() => handleTypeSelect(type)}
+                        className={`p-4 rounded-lg border text-left transition-all hover:border-primary/50 hover:shadow-sm ${
+                          data.organizationType === type
+                            ? 'border-primary bg-primary/5 shadow-sm'
+                            : 'border-border/60 bg-card'
+                        }`}
+                      >
+                        <Icon
+                          className={`w-5 h-5 mb-2 ${
+                            data.organizationType === type ? 'text-primary' : 'text-muted-foreground'
+                          }`}
+                        />
+                        <h3 className="text-sm font-medium text-foreground mb-0.5">{label}</h3>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
+                      </button>
+                    ))}
                   </div>
+                </CardContent>
+              </>
+            )}
 
-                  <div className="md:col-span-2">
-                    <Label className="text-sm font-medium">Staff/Member Size *</Label>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {sizeRanges.map(size => (
-                        <Button
-                          key={size}
-                          type="button"
-                          variant={data.sizeRange === size ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setData(prev => ({ ...prev, sizeRange: size }))}
-                          className="h-8 text-xs px-3"
-                        >
-                          {size}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {data.organizationType !== 'church' && (
-                    <div>
-                      <Label htmlFor="industry" className="text-sm font-medium">Industry</Label>
+            {step === 2 && (
+              <>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                    <Settings className="w-4 h-4 text-primary" />
+                    Organization Details
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Tell us more about your {organizationTypes.find(o => o.type === data.organizationType)?.label.toLowerCase()}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+                      <Label htmlFor="orgName" className="text-sm font-medium">Organization Name *</Label>
                       <Input
-                        id="industry"
-                        value={data.industry}
-                        onChange={(e) => setData(prev => ({ ...prev, industry: e.target.value }))}
-                        placeholder="e.g., Technology, Healthcare"
+                        id="orgName"
+                        value={data.organizationName}
+                        onChange={(e) => setData(prev => ({ ...prev, organizationName: e.target.value }))}
+                        placeholder={data.organizationType === 'church' ? 'e.g., Grace Community Church' : 'e.g., Acme Corporation'}
                         className="mt-1.5 h-9"
                       />
                     </div>
-                  )}
 
-                  <div className="md:col-span-2">
-                    <Label htmlFor="address" className="text-sm font-medium">Address</Label>
-                    <Textarea
-                      id="address"
-                      value={data.address}
-                      onChange={(e) => setData(prev => ({ ...prev, address: e.target.value }))}
-                      placeholder="Street address"
-                      className="mt-1.5 min-h-[60px] resize-none"
-                      rows={2}
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="city" className="text-sm font-medium">City</Label>
-                    <Input
-                      id="city"
-                      value={data.city}
-                      onChange={(e) => setData(prev => ({ ...prev, city: e.target.value }))}
-                      placeholder="e.g., Lagos"
-                      className="mt-1.5 h-9"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="country" className="text-sm font-medium">Country</Label>
-                    <Input
-                      id="country"
-                      value={data.country}
-                      onChange={(e) => setData(prev => ({ ...prev, country: e.target.value }))}
-                      placeholder="e.g., Nigeria"
-                      className="mt-1.5 h-9"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="phone" className="text-sm font-medium">Phone</Label>
-                    <Input
-                      id="phone"
-                      value={data.phone}
-                      onChange={(e) => setData(prev => ({ ...prev, phone: e.target.value }))}
-                      placeholder="+234..."
-                      className="mt-1.5 h-9"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="website" className="text-sm font-medium">Website</Label>
-                    <Input
-                      id="website"
-                      value={data.website}
-                      onChange={(e) => setData(prev => ({ ...prev, website: e.target.value }))}
-                      placeholder="https://..."
-                      className="mt-1.5 h-9"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </>
-          )}
-
-          {step === 3 && data.organizationType && (
-            <>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                  <Check className="w-4 h-4 text-primary" />
-                  Select Features
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Choose the features you want to enable for your organization
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {featuresByType[data.organizationType].map(feature => (
-                    <button
-                      key={feature.id}
-                      onClick={() => handleFeatureToggle(feature.id)}
-                      className={`p-4 rounded-lg border text-left transition-all hover:border-primary/50 hover:shadow-sm ${
-                        data.features.includes(feature.id)
-                          ? 'border-primary bg-primary/5 shadow-sm'
-                          : 'border-border/60 bg-card'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                          data.features.includes(feature.id)
-                            ? 'border-primary bg-primary'
-                            : 'border-muted-foreground/50'
-                        }`}>
-                          {data.features.includes(feature.id) && (
-                            <Check className="w-2.5 h-2.5 text-primary-foreground" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="text-sm font-medium text-foreground leading-tight">{feature.label}</h3>
-                          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{feature.description}</p>
-                        </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-sm font-medium">Staff/Member Size *</Label>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {sizeRanges.map(size => (
+                          <Button
+                            key={size}
+                            type="button"
+                            variant={data.sizeRange === size ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setData(prev => ({ ...prev, sizeRange: size }))}
+                            className="h-8 text-xs px-3"
+                          >
+                            {size}
+                          </Button>
+                        ))}
                       </div>
-                    </button>
-                  ))}
-                </div>
-              </CardContent>
-            </>
-          )}
+                    </div>
 
-          {step === 4 && data.organizationType && (
-            <>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                  <Users className="w-4 h-4 text-primary" />
-                  Admin Setup
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Set up your administrator profile
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="firstName" className="text-sm font-medium">First Name *</Label>
-                    <Input
-                      id="firstName"
-                      value={data.adminFirstName}
-                      onChange={(e) => setData(prev => ({ ...prev, adminFirstName: e.target.value }))}
-                      placeholder="John"
-                      className="mt-1.5 h-9"
-                    />
-                  </div>
+                    {data.organizationType !== 'church' && (
+                      <div>
+                        <Label htmlFor="industry" className="text-sm font-medium">Industry</Label>
+                        <Input
+                          id="industry"
+                          value={data.industry}
+                          onChange={(e) => setData(prev => ({ ...prev, industry: e.target.value }))}
+                          placeholder="e.g., Technology, Healthcare"
+                          className="mt-1.5 h-9"
+                        />
+                      </div>
+                    )}
 
-                  <div>
-                    <Label htmlFor="lastName" className="text-sm font-medium">Last Name *</Label>
-                    <Input
-                      id="lastName"
-                      value={data.adminLastName}
-                      onChange={(e) => setData(prev => ({ ...prev, adminLastName: e.target.value }))}
-                      placeholder="Doe"
-                      className="mt-1.5 h-9"
-                    />
-                  </div>
+                    <div className="md:col-span-2">
+                      <Label htmlFor="address" className="text-sm font-medium">Address</Label>
+                      <Textarea
+                        id="address"
+                        value={data.address}
+                        onChange={(e) => setData(prev => ({ ...prev, address: e.target.value }))}
+                        placeholder="Street address"
+                        className="mt-1.5 min-h-[60px] resize-none"
+                        rows={2}
+                      />
+                    </div>
 
-                  <div className="md:col-span-2">
-                    <Label className="text-sm font-medium">Your Role *</Label>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {rolesByType[data.organizationType].map(role => (
-                        <Button
-                          key={role}
-                          type="button"
-                          variant={data.adminRole === role ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setData(prev => ({ ...prev, adminRole: role }))}
-                          className="h-8 text-xs px-3"
-                        >
-                          {role}
-                        </Button>
-                      ))}
+                    <div>
+                      <Label htmlFor="city" className="text-sm font-medium">City</Label>
+                      <Input
+                        id="city"
+                        value={data.city}
+                        onChange={(e) => setData(prev => ({ ...prev, city: e.target.value }))}
+                        placeholder="e.g., Lagos"
+                        className="mt-1.5 h-9"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="country" className="text-sm font-medium">Country</Label>
+                      <Input
+                        id="country"
+                        value={data.country}
+                        onChange={(e) => setData(prev => ({ ...prev, country: e.target.value }))}
+                        placeholder="e.g., Nigeria"
+                        className="mt-1.5 h-9"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="phone" className="text-sm font-medium">Phone</Label>
+                      <Input
+                        id="phone"
+                        value={data.phone}
+                        onChange={(e) => setData(prev => ({ ...prev, phone: e.target.value }))}
+                        placeholder="+234..."
+                        className="mt-1.5 h-9"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="website" className="text-sm font-medium">Website</Label>
+                      <Input
+                        id="website"
+                        value={data.website}
+                        onChange={(e) => setData(prev => ({ ...prev, website: e.target.value }))}
+                        placeholder="https://..."
+                        className="mt-1.5 h-9"
+                      />
                     </div>
                   </div>
-                </div>
+                </CardContent>
+              </>
+            )}
 
-                {/* Summary */}
-                <div className="mt-6 p-4 rounded-lg bg-muted/30 border border-border/50">
-                  <h4 className="text-sm font-semibold text-foreground mb-3">Setup Summary</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Organization:</span>
-                      <span className="font-medium text-foreground">{data.organizationName}</span>
+            {step === 3 && data.organizationType && (
+              <>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                    <Check className="w-4 h-4 text-primary" />
+                    Select Features
+                  </CardTitle>
+                  <CardDescription className="text-xs">Choose the features you want to enable for your organization</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {featuresByType[data.organizationType].map(feature => (
+                      <button
+                        key={feature.id}
+                        onClick={() => handleFeatureToggle(feature.id)}
+                        className={`p-4 rounded-lg border text-left transition-all hover:border-primary/50 hover:shadow-sm ${
+                          data.features.includes(feature.id)
+                            ? 'border-primary bg-primary/5 shadow-sm'
+                            : 'border-border/60 bg-card'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                              data.features.includes(feature.id)
+                                ? 'border-primary bg-primary'
+                                : 'border-muted-foreground/50'
+                            }`}
+                          >
+                            {data.features.includes(feature.id) && (
+                              <Check className="w-2.5 h-2.5 text-primary-foreground" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="text-sm font-medium text-foreground leading-tight">{feature.label}</h3>
+                            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{feature.description}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </CardContent>
+              </>
+            )}
+
+            {step === 4 && data.organizationType && (
+              <>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                    <Users className="w-4 h-4 text-primary" />
+                    Admin Setup
+                  </CardTitle>
+                  <CardDescription className="text-xs">Set up your administrator profile</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="firstName" className="text-sm font-medium">First Name *</Label>
+                      <Input
+                        id="firstName"
+                        value={data.adminFirstName}
+                        onChange={(e) => setData(prev => ({ ...prev, adminFirstName: e.target.value }))}
+                        placeholder="John"
+                        className="mt-1.5 h-9"
+                      />
                     </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Type:</span>
-                      <span className="font-medium text-foreground capitalize">{data.organizationType}</span>
+
+                    <div>
+                      <Label htmlFor="lastName" className="text-sm font-medium">Last Name *</Label>
+                      <Input
+                        id="lastName"
+                        value={data.adminLastName}
+                        onChange={(e) => setData(prev => ({ ...prev, adminLastName: e.target.value }))}
+                        placeholder="Doe"
+                        className="mt-1.5 h-9"
+                      />
                     </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Size:</span>
-                      <span className="font-medium text-foreground">{data.sizeRange} members</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Features:</span>
-                      <span className="font-medium text-foreground">{data.features.length} selected</span>
+
+                    <div className="md:col-span-2">
+                      <Label className="text-sm font-medium">Your Role *</Label>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {rolesByType[data.organizationType].map(role => (
+                          <Button
+                            key={role}
+                            type="button"
+                            variant={data.adminRole === role ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setData(prev => ({ ...prev, adminRole: role }))}
+                            className="h-8 text-xs px-3"
+                          >
+                            {role}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </>
-          )}
-        </Card>
 
-        {/* Navigation */}
-        <div className="flex justify-between">
-          <Button
-            variant="outline"
-            onClick={() => setStep(s => Math.max(1, s - 1))}
-            disabled={step === 1}
-            className="gap-2 h-9 text-sm"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Back
-          </Button>
+                  <div className="mt-6 p-4 rounded-lg bg-muted/30 border border-border/50">
+                    <h4 className="text-sm font-semibold text-foreground mb-3">Setup Summary</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Organization:</span>
+                        <span className="font-medium text-foreground">{data.organizationName}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Type:</span>
+                        <span className="font-medium text-foreground capitalize">{data.organizationType}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Size:</span>
+                        <span className="font-medium text-foreground">{data.sizeRange} members</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Features:</span>
+                        <span className="font-medium text-foreground">{data.features.length} selected</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </>
+            )}
+          </Card>
 
-          {step < totalSteps ? (
+          <div className="flex justify-between">
             <Button
-              onClick={() => setStep(s => Math.min(totalSteps, s + 1))}
-              disabled={!canProceed()}
+              variant="outline"
+              onClick={() => setStep(s => Math.max(1, s - 1))}
+              disabled={step === 1}
               className="gap-2 h-9 text-sm"
             >
-              Continue
-              <ArrowRight className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Back
             </Button>
-          ) : (
-            <Button
-              onClick={handleSubmit}
-              disabled={!canProceed() || isLoading}
-              className="gap-2 h-9 text-sm"
-            >
-              {isLoading ? 'Setting up...' : 'Complete Setup'}
-              <Check className="w-3.5 h-3.5" />
-            </Button>
-          )}
+
+            {step < totalSteps ? (
+              <Button
+                onClick={() => setStep(s => Math.min(totalSteps, s + 1))}
+                disabled={!canProceed()}
+                className="gap-2 h-9 text-sm"
+              >
+                Continue
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSubmit}
+                disabled={!canProceed() || isLoading}
+                className="gap-2 h-9 text-sm"
+              >
+                {isLoading ? 'Setting up...' : 'Complete Setup'}
+                <Check className="w-3.5 h-3.5" />
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      </main>
+
+      <Footer />
     </div>
   );
 };
