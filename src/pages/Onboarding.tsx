@@ -342,7 +342,15 @@ const Onboarding = () => {
       if (roleError) throw roleError;
 
       // Clear session storage on success
-      clearOnboardingSession();
+      try {
+        await deleteOnboardingSession(session.user.id);
+      } catch {
+        // ignore cleanup errors
+      }
+      if (storageKeys) {
+        sessionStorage.removeItem(storageKeys.data);
+        sessionStorage.removeItem(storageKeys.step);
+      }
 
       toast({
         title: 'Setup Complete!',
