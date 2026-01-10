@@ -22,6 +22,7 @@ export const loadOnboardingSession = async (userId: string) => {
 };
 
 export const saveOnboardingSession = async (userId: string, payload: OnboardingSessionPayload) => {
+  // Cast to bypass type issue until Supabase types regenerate
   const { error } = await supabase
     .from("onboarding_sessions")
     .upsert(
@@ -29,7 +30,7 @@ export const saveOnboardingSession = async (userId: string, payload: OnboardingS
         user_id: userId,
         step: payload.step,
         data: payload.data,
-      },
+      } as never,
       { onConflict: "user_id" }
     );
 
