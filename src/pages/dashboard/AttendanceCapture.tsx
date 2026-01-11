@@ -47,17 +47,26 @@ const AttendanceCapture = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
-        setIsCameraOn(true);
         
-        // Start auto-capture every 2 seconds
-        intervalRef.current = setInterval(captureAndRecognize, 2000);
+        // Wait for video to be ready before setting camera on
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().then(() => {
+            setIsCameraOn(true);
+            // Start auto-capture every 2 seconds after video is playing
+            intervalRef.current = setInterval(captureAndRecognize, 2000);
+          }).catch((playErr) => {
+            console.error('Video play error:', playErr);
+            setError('Unable to start video playback.');
+          });
+        };
       }
     } catch (err) {
       console.error('Camera error:', err);
-      setError('Unable to access camera. Please check permissions.');
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Unable to access camera: ${errorMessage}. Please check permissions.`);
       toast({
         title: 'Camera Error',
-        description: 'Unable to access camera. Please check permissions.',
+        description: `Unable to access camera: ${errorMessage}. Please check permissions.`,
         variant: 'destructive',
       });
     }
