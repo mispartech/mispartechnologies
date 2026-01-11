@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
   UserPlus, 
-  Calendar, 
   Building2, 
   ScanFace, 
   FileText, 
@@ -15,6 +15,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 interface DashboardSidebarProps {
   isOpen: boolean;
@@ -24,6 +25,27 @@ interface DashboardSidebarProps {
 }
 
 const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardSidebarProps) => {
+  const [userRole, setUserRole] = useState<string>('member');
+
+  // Fetch the actual role from user_roles table (not profiles.role)
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!profile?.id) return;
+      
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', profile.id)
+        .single();
+      
+      if (data && !error) {
+        setUserRole(data.role);
+      }
+    };
+
+    fetchUserRole();
+  }, [profile?.id]);
+
   const menuItems = [
     { 
       label: 'Dashboard', 
@@ -87,7 +109,6 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
     },
   ];
 
-  const userRole = profile?.role || 'member';
   const filteredMenuItems = menuItems.filter(item => item.roles.includes(userRole));
 
   return (
@@ -157,12 +178,12 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
         </nav>
 
         {/* User role badge */}
-        {isOpen && profile && (
+        {isOpen && (
           <div className="absolute bottom-4 left-4 right-4">
             <div className="bg-muted rounded-lg p-3">
               <p className="text-xs text-muted-foreground">Logged in as</p>
               <p className="text-sm font-medium text-foreground capitalize">
-                {profile.role?.replace('_', ' ') || 'Member'}
+                {userRole.replace(/_/g, ' ')}
               </p>
             </div>
           </div>
@@ -209,6 +230,16 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
             );
           })}
         </nav>
+
+        {/* User role badge */}
+        <div className="absolute bottom-4 left-4 right-4">
+          <div className="bg-muted rounded-lg p-3">
+            <p className="text-xs text-muted-foreground">Logged in as</p>
+            <p className="text-sm font-medium text-foreground capitalize">
+              {userRole.replace(/_/g, ' ')}
+            </p>
+          </div>
+        </div>
       </aside>
     </>
   );

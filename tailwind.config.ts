@@ -64,10 +64,11 @@ export default {
           ring: "hsl(var(--sidebar-ring))"
         },
         purple: {
-          DEFAULT: "#663399", // RebeccaPurple
-          light: "#8e4585", // Plum
+          DEFAULT: "#663399",
+          light: "#a855f7",
           dark: "#4b2569",
         },
+        "purple-light": "#a855f7",
         charcoal: {
           DEFAULT: "#333333",
           light: "#4a4a4a",
