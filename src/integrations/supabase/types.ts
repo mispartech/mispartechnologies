@@ -14,6 +14,94 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_logs: {
+        Row: {
+          action: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          organization_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          organization_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          organization_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      admin_invites: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          invited_role: Database["public"]["Enums"]["app_role"]
+          organization_id: string | null
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          invited_role?: Database["public"]["Enums"]["app_role"]
+          organization_id?: string | null
+          token?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          invited_role?: Database["public"]["Enums"]["app_role"]
+          organization_id?: string | null
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_invites_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attendance: {
         Row: {
           confidence_score: number | null
@@ -277,29 +365,38 @@ export type Database = {
       }
       temp_attendance: {
         Row: {
+          claimed_at: string | null
+          claimed_by: string | null
           created_at: string | null
           date: string
           face_detections: number | null
           face_roi_url: string | null
           id: string
+          status: string | null
           temp_face_id: string
           time: string
         }
         Insert: {
+          claimed_at?: string | null
+          claimed_by?: string | null
           created_at?: string | null
           date: string
           face_detections?: number | null
           face_roi_url?: string | null
           id?: string
+          status?: string | null
           temp_face_id: string
           time: string
         }
         Update: {
+          claimed_at?: string | null
+          claimed_by?: string | null
           created_at?: string | null
           date?: string
           face_detections?: number | null
           face_roi_url?: string | null
           id?: string
+          status?: string | null
           temp_face_id?: string
           time?: string
         }
@@ -350,6 +447,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_department_head: {
+        Args: { _department_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_org_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
@@ -361,6 +462,9 @@ export type Database = {
         | "parish_pastor"
         | "secretary"
         | "usher"
+        | "department_head"
+        | "ushering_head_admin"
+        | "usher_admin"
       organization_type:
         | "church"
         | "corporate"
@@ -504,6 +608,9 @@ export const Constants = {
         "parish_pastor",
         "secretary",
         "usher",
+        "department_head",
+        "ushering_head_admin",
+        "usher_admin",
       ],
       organization_type: [
         "church",

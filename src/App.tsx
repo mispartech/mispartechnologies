@@ -18,6 +18,8 @@ import ProfileSettings from "./pages/dashboard/ProfileSettings";
 import FaceGallery from "./pages/dashboard/FaceGallery";
 import Reports from "./pages/dashboard/Reports";
 import OrganizationSettings from "./pages/dashboard/OrganizationSettings";
+import AdminManagement from "./pages/dashboard/AdminManagement";
+import ActivityLogs from "./pages/dashboard/ActivityLogs";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +46,8 @@ const App = () => (
             <Route path="face-gallery" element={<FaceGallery />} />
             <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<OrganizationSettings />} />
+            <Route path="admin-management" element={<AdminManagement />} />
+            <Route path="activity-logs" element={<ActivityLogs />} />
           </Route>
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

@@ -1,34 +1,16 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { 
-  Search, 
-  MoreVertical, 
-  UserPlus,
-  Eye,
-  UserCheck,
-  Clock
-} from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Search, MoreVertical, UserPlus, Eye, UserCheck, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import StatsCard from '@/components/dashboard/StatsCard';
+import ClaimVisitorModal from '@/components/dashboard/ClaimVisitorModal';
 import { format } from 'date-fns';
 
 interface TempMember {
@@ -45,11 +27,9 @@ const TempMembersList = () => {
   const [tempMembers, setTempMembers] = useState<TempMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [stats, setStats] = useState({
-    total: 0,
-    today: 0,
-    thisWeek: 0
-  });
+  const [selectedVisitor, setSelectedVisitor] = useState<TempMember | null>(null);
+  const [claimModalOpen, setClaimModalOpen] = useState(false);
+  const [stats, setStats] = useState({ total: 0, today: 0, thisWeek: 0 });
   const { toast } = useToast();
 
   useEffect(() => {
@@ -212,7 +192,10 @@ const TempMembersList = () => {
                             <Eye className="w-4 h-4 mr-2" />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            setSelectedVisitor(member);
+                            setClaimModalOpen(true);
+                          }}>
                             <UserPlus className="w-4 h-4 mr-2" />
                             Register as Member
                           </DropdownMenuItem>
@@ -226,6 +209,13 @@ const TempMembersList = () => {
           </Table>
         </CardContent>
       </Card>
+
+      <ClaimVisitorModal
+        isOpen={claimModalOpen}
+        onClose={() => setClaimModalOpen(false)}
+        visitor={selectedVisitor}
+        onSuccess={fetchTempMembers}
+      />
     </div>
   );
 };

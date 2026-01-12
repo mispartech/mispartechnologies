@@ -102,6 +102,18 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
       roles: ['super_admin', 'admin', 'manager', 'member', 'parish_pastor', 'secretary', 'usher']
     },
     { 
+      label: 'Admin Management', 
+      icon: Shield, 
+      href: '/dashboard/admin-management',
+      roles: ['super_admin']
+    },
+    { 
+      label: 'Activity Logs', 
+      icon: Activity, 
+      href: '/dashboard/activity-logs',
+      roles: ['super_admin', 'admin']
+    },
+    { 
       label: 'Settings', 
       icon: Settings, 
       href: '/dashboard/settings',
