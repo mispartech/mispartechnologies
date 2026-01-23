@@ -57,29 +57,37 @@ const AdminManagement = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch existing admins with their roles
+      // Fetch existing admin roles
       const { data: rolesData, error: rolesError } = await supabase
         .from('user_roles')
-        .select(`
-          user_id,
-          role,
-          created_at,
-          profiles:user_id (
-            id,
-            email,
-            first_name,
-            last_name
-          )
-        `)
+        .select('user_id, role, created_at')
         .in('role', ['super_admin', 'admin', 'parish_pastor', 'department_head', 'ushering_head_admin', 'usher_admin']);
 
       if (rolesError) throw rolesError;
 
+      // Get unique user IDs and fetch their profiles
+      const userIds = [...new Set((rolesData || []).map(r => r.user_id))];
+      
+      let profilesMap: Record<string, any> = {};
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, email, first_name, last_name')
+          .in('id', userIds);
+
+        if (profilesError) throw profilesError;
+
+        profilesMap = (profilesData || []).reduce((acc, p) => {
+          acc[p.id] = p;
+          return acc;
+        }, {} as Record<string, any>);
+      }
+
       const adminsList = (rolesData || []).map((r: any) => ({
         id: r.user_id,
-        email: r.profiles?.email || '',
-        first_name: r.profiles?.first_name,
-        last_name: r.profiles?.last_name,
+        email: profilesMap[r.user_id]?.email || '',
+        first_name: profilesMap[r.user_id]?.first_name,
+        last_name: profilesMap[r.user_id]?.last_name,
         role: r.role,
         created_at: r.created_at
       }));
