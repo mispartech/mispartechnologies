@@ -67,7 +67,7 @@ const MembersList = () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*, departments(name)')
+        .select('*, departments!profiles_department_id_fkey(name)')
         .eq('role', 'member')
         .order('created_at', { ascending: false });
 
