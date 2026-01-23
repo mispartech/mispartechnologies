@@ -20,6 +20,7 @@ import Reports from "./pages/dashboard/Reports";
 import OrganizationSettings from "./pages/dashboard/OrganizationSettings";
 import AdminManagement from "./pages/dashboard/AdminManagement";
 import ActivityLogs from "./pages/dashboard/ActivityLogs";
+import ScheduleManagement from "./pages/dashboard/ScheduleManagement";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const App = () => (
             <Route path="settings" element={<OrganizationSettings />} />
             <Route path="admin-management" element={<AdminManagement />} />
             <Route path="activity-logs" element={<ActivityLogs />} />
+            <Route path="schedules" element={<ScheduleManagement />} />
           </Route>
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

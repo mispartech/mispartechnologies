@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-type EntityType = 'member' | 'department' | 'attendance' | 'visitor' | 'admin' | 'organization' | 'settings';
+type EntityType = 'member' | 'department' | 'attendance' | 'visitor' | 'admin' | 'organization' | 'settings' | 'schedule';
 type ActionType = 'create' | 'update' | 'delete' | 'view' | 'claim' | 'invite' | 'login' | 'logout';
 
 interface LogActivityParams {

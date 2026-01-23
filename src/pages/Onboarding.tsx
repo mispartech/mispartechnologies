@@ -29,10 +29,26 @@ import {
   ArrowRight,
   ArrowLeft,
   Check,
-  Scan
+  Scan,
+  Calendar,
+  Clock,
+  Plus,
+  Trash2
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
 type OrganizationType = 'church' | 'corporate' | 'school' | 'hospital' | 'government' | 'nonprofit' | 'other';
+
+interface ServiceSchedule {
+  id: string;
+  name: string;
+  description: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+}
 
 interface OnboardingData {
   organizationType: OrganizationType | null;
@@ -49,6 +65,7 @@ interface OnboardingData {
   adminFirstName: string;
   adminLastName: string;
   adminRole: string;
+  serviceSchedules: ServiceSchedule[];
 }
 
 const defaultData: OnboardingData = {
@@ -66,6 +83,7 @@ const defaultData: OnboardingData = {
   adminFirstName: '',
   adminLastName: '',
   adminRole: '',
+  serviceSchedules: [],
 };
 
 const organizationTypes = [
@@ -79,6 +97,50 @@ const organizationTypes = [
 ];
 
 const sizeRanges = ['1-10', '11-50', '51-200', '201-500', '500+'];
+
+const daysOfWeek = [
+  { value: 0, label: 'Sunday' },
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+];
+
+// Default schedules based on organization type
+const defaultSchedulesByType: Record<OrganizationType, ServiceSchedule[]> = {
+  church: [
+    { id: '1', name: 'Sunday Service', description: 'Main worship service', dayOfWeek: 0, startTime: '08:00', endTime: '11:00', isActive: true },
+    { id: '2', name: 'Midweek Service', description: 'Wednesday Bible study', dayOfWeek: 3, startTime: '18:00', endTime: '20:00', isActive: true },
+  ],
+  corporate: [
+    { id: '1', name: 'Weekday Work', description: 'Regular work hours', dayOfWeek: 1, startTime: '09:00', endTime: '17:00', isActive: true },
+    { id: '2', name: 'Weekday Work', description: 'Regular work hours', dayOfWeek: 2, startTime: '09:00', endTime: '17:00', isActive: true },
+    { id: '3', name: 'Weekday Work', description: 'Regular work hours', dayOfWeek: 3, startTime: '09:00', endTime: '17:00', isActive: true },
+    { id: '4', name: 'Weekday Work', description: 'Regular work hours', dayOfWeek: 4, startTime: '09:00', endTime: '17:00', isActive: true },
+    { id: '5', name: 'Weekday Work', description: 'Regular work hours', dayOfWeek: 5, startTime: '09:00', endTime: '17:00', isActive: true },
+  ],
+  school: [
+    { id: '1', name: 'School Day', description: 'Regular classes', dayOfWeek: 1, startTime: '08:00', endTime: '15:00', isActive: true },
+    { id: '2', name: 'School Day', description: 'Regular classes', dayOfWeek: 2, startTime: '08:00', endTime: '15:00', isActive: true },
+    { id: '3', name: 'School Day', description: 'Regular classes', dayOfWeek: 3, startTime: '08:00', endTime: '15:00', isActive: true },
+    { id: '4', name: 'School Day', description: 'Regular classes', dayOfWeek: 4, startTime: '08:00', endTime: '15:00', isActive: true },
+    { id: '5', name: 'School Day', description: 'Regular classes', dayOfWeek: 5, startTime: '08:00', endTime: '15:00', isActive: true },
+  ],
+  hospital: [
+    { id: '1', name: 'Day Shift', description: 'Morning to afternoon', dayOfWeek: 1, startTime: '07:00', endTime: '19:00', isActive: true },
+  ],
+  government: [
+    { id: '1', name: 'Office Hours', description: 'Regular work day', dayOfWeek: 1, startTime: '08:00', endTime: '16:00', isActive: true },
+  ],
+  nonprofit: [
+    { id: '1', name: 'Office Day', description: 'Regular operations', dayOfWeek: 1, startTime: '09:00', endTime: '17:00', isActive: true },
+  ],
+  other: [
+    { id: '1', name: 'Default Schedule', description: 'Standard hours', dayOfWeek: 1, startTime: '09:00', endTime: '17:00', isActive: true },
+  ],
+};
 
 const featuresByType: Record<OrganizationType, { id: string; label: string; description: string }[]> = {
   church: [
@@ -142,6 +204,37 @@ const rolesByType: Record<OrganizationType, string[]> = {
   other: ['Administrator', 'Manager', 'Supervisor', 'Coordinator', 'Other'],
 };
 
+// Dynamic labels based on organization type
+const getScheduleLabel = (type: OrganizationType | null) => {
+  switch (type) {
+    case 'church': return 'Service Days & Times';
+    case 'corporate': return 'Work Schedule';
+    case 'school': return 'Class Schedule';
+    case 'hospital': return 'Shift Schedule';
+    default: return 'Attendance Schedule';
+  }
+};
+
+const getScheduleDescription = (type: OrganizationType | null) => {
+  switch (type) {
+    case 'church': return 'Configure when services are held for attendance tracking';
+    case 'corporate': return 'Set up work days and hours for employee attendance';
+    case 'school': return 'Define school days and class hours';
+    case 'hospital': return 'Configure shift timings for staff attendance';
+    default: return 'Set up when attendance should be tracked';
+  }
+};
+
+const getScheduleItemLabel = (type: OrganizationType | null) => {
+  switch (type) {
+    case 'church': return 'Service';
+    case 'corporate': return 'Shift';
+    case 'school': return 'Session';
+    case 'hospital': return 'Shift';
+    default: return 'Schedule';
+  }
+};
+
 const Onboarding = () => {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -151,7 +244,7 @@ const Onboarding = () => {
 
   const navigate = useNavigate();
   const { toast } = useToast();
-  const totalSteps = 4;
+  const totalSteps = 5; // Increased to 5 steps
 
   const didHydrateRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
@@ -175,7 +268,6 @@ const Onboarding = () => {
 
       setUserId(user.id);
 
-      // Pre-fill admin name from profile and detect already-onboarded users
       const { data: profile, error: profileErr } = await supabase
         .from('profiles')
         .select('first_name, last_name, email, organization_id')
@@ -185,7 +277,6 @@ const Onboarding = () => {
       if (profileErr) console.warn('Profile fetch error:', profileErr);
 
       if (profile?.organization_id) {
-        // Already onboarded
         try {
           await deleteOnboardingSession(user.id);
         } catch {
@@ -199,19 +290,17 @@ const Onboarding = () => {
         return;
       }
 
-      // Hydrate progress (backend-first, then sessionStorage fallback)
       try {
         const persisted = await loadOnboardingSession(user.id);
         if (persisted && !didHydrateRef.current) {
           didHydrateRef.current = true;
-          setStep(Math.min(4, Math.max(1, persisted.step || 1)));
+          setStep(Math.min(5, Math.max(1, persisted.step || 1)));
           setData((prev) => ({ ...prev, ...(persisted.data as Partial<OnboardingData>) }));
         }
       } catch (e) {
         console.warn('Failed to load onboarding session from backend:', e);
       }
 
-      // SessionStorage fallback / merge (per-user)
       if (storageKeys && !didHydrateRef.current) {
         try {
           const savedData = sessionStorage.getItem(storageKeys.data);
@@ -219,14 +308,13 @@ const Onboarding = () => {
           if (savedData) setData((prev) => ({ ...prev, ...JSON.parse(savedData) }));
           if (savedStep) {
             const n = parseInt(savedStep, 10);
-            if (!Number.isNaN(n)) setStep(Math.min(4, Math.max(1, n)));
+            if (!Number.isNaN(n)) setStep(Math.min(5, Math.max(1, n)));
           }
         } catch (e) {
           console.warn('Failed to load onboarding session from sessionStorage:', e);
         }
       }
 
-      // Only pre-fill if not already set
       if (profile) {
         setData((prev) => ({
           ...prev,
@@ -243,11 +331,9 @@ const Onboarding = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
-  // Persist onboarding progress (backend + sessionStorage), debounced
   useEffect(() => {
     if (!userId || !storageKeys || isAuthLoading) return;
 
-    // sessionStorage (fast reload)
     try {
       sessionStorage.setItem(storageKeys.data, JSON.stringify(data));
       sessionStorage.setItem(storageKeys.step, String(step));
@@ -255,7 +341,6 @@ const Onboarding = () => {
       // ignore
     }
 
-    // backend (cross-refresh + reliable)
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
       saveOnboardingSession(userId, { step, data: data as unknown as Record<string, unknown> }).catch((e) => {
@@ -269,7 +354,14 @@ const Onboarding = () => {
   }, [data, step, userId, storageKeys, isAuthLoading]);
 
   const handleTypeSelect = (type: OrganizationType) => {
-    setData(prev => ({ ...prev, organizationType: type, features: [], adminRole: '' }));
+    const defaultSchedules = defaultSchedulesByType[type] || [];
+    setData(prev => ({ 
+      ...prev, 
+      organizationType: type, 
+      features: [], 
+      adminRole: '',
+      serviceSchedules: defaultSchedules,
+    }));
   };
 
   const handleFeatureToggle = (featureId: string) => {
@@ -278,6 +370,38 @@ const Onboarding = () => {
       features: prev.features.includes(featureId)
         ? prev.features.filter(f => f !== featureId)
         : [...prev.features, featureId]
+    }));
+  };
+
+  const handleAddSchedule = () => {
+    const newSchedule: ServiceSchedule = {
+      id: crypto.randomUUID(),
+      name: '',
+      description: '',
+      dayOfWeek: 0,
+      startTime: '09:00',
+      endTime: '17:00',
+      isActive: true,
+    };
+    setData(prev => ({
+      ...prev,
+      serviceSchedules: [...prev.serviceSchedules, newSchedule],
+    }));
+  };
+
+  const handleRemoveSchedule = (id: string) => {
+    setData(prev => ({
+      ...prev,
+      serviceSchedules: prev.serviceSchedules.filter(s => s.id !== id),
+    }));
+  };
+
+  const handleScheduleChange = (id: string, field: keyof ServiceSchedule, value: any) => {
+    setData(prev => ({
+      ...prev,
+      serviceSchedules: prev.serviceSchedules.map(s => 
+        s.id === id ? { ...s, [field]: value } : s
+      ),
     }));
   };
 
@@ -298,9 +422,6 @@ const Onboarding = () => {
       const user = userRes.user;
       if (!user) throw new Error('You are not logged in. Please sign in again and retry.');
 
-      // IMPORTANT: avoid `.select()` on organizations here.
-      // The current SELECT policy allows reading only via the user's profile.organization_id,
-      // so selecting the freshly inserted row would fail before we update the profile.
       const orgId = crypto.randomUUID();
 
       const { error: orgError } = await supabase
@@ -344,7 +465,27 @@ const Onboarding = () => {
 
       if (roleError) throw roleError;
 
-      // Clear persisted progress on success
+      // Insert service schedules
+      if (data.serviceSchedules.length > 0) {
+        const schedules = data.serviceSchedules.map(s => ({
+          organization_id: orgId,
+          name: s.name || getScheduleItemLabel(data.organizationType),
+          description: s.description,
+          day_of_week: s.dayOfWeek,
+          start_time: s.startTime,
+          end_time: s.endTime,
+          is_active: s.isActive,
+        }));
+
+        const { error: scheduleError } = await supabase
+          .from('service_schedules')
+          .insert(schedules as never);
+
+        if (scheduleError) {
+          console.warn('Failed to insert schedules:', scheduleError);
+        }
+      }
+
       try {
         await deleteOnboardingSession(user.id);
       } catch {
@@ -373,9 +514,9 @@ const Onboarding = () => {
 
       if (code === '42501' || status === 403) {
         description =
-          'Setup couldn’t create your organization due to a permissions rule. '
+          "Setup couldn't create your organization due to a permissions rule. "
           + 'This usually happens if your session is missing/expired, or if the backend policy blocks the insert. '
-          + 'Please sign out and sign back in, then retry. If it still fails, tell me the exact error code shown below.';
+          + 'Please sign out and sign back in, then retry. If it still fails, contact support.';
       }
 
       toast({
@@ -393,7 +534,8 @@ const Onboarding = () => {
       case 1: return !!data.organizationType;
       case 2: return !!data.organizationName && !!data.sizeRange;
       case 3: return data.features.length > 0;
-      case 4: return !!data.adminFirstName && !!data.adminLastName && !!data.adminRole;
+      case 4: return data.serviceSchedules.length > 0 && data.serviceSchedules.every(s => s.name && s.startTime && s.endTime);
+      case 5: return !!data.adminFirstName && !!data.adminLastName && !!data.adminRole;
       default: return false;
     }
   };
@@ -425,6 +567,7 @@ const Onboarding = () => {
 
           {/* Step Content */}
           <Card className="mb-6 border border-border/50 shadow-sm">
+            {/* Step 1: Organization Type */}
             {step === 1 && (
               <>
                 <CardHeader className="pb-4">
@@ -460,6 +603,7 @@ const Onboarding = () => {
               </>
             )}
 
+            {/* Step 2: Organization Details */}
             {step === 2 && (
               <>
                 <CardHeader className="pb-4">
@@ -575,6 +719,7 @@ const Onboarding = () => {
               </>
             )}
 
+            {/* Step 3: Features */}
             {step === 3 && data.organizationType && (
               <>
                 <CardHeader className="pb-4">
@@ -620,7 +765,128 @@ const Onboarding = () => {
               </>
             )}
 
+            {/* Step 4: Service Schedule */}
             {step === 4 && data.organizationType && (
+              <>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                    <Calendar className="w-4 h-4 text-primary" />
+                    {getScheduleLabel(data.organizationType)}
+                  </CardTitle>
+                  <CardDescription className="text-xs">{getScheduleDescription(data.organizationType)}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {data.serviceSchedules.map((schedule, index) => (
+                    <div key={schedule.id} className="p-4 rounded-lg border border-border/60 bg-card/50 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-foreground">
+                          {getScheduleItemLabel(data.organizationType)} {index + 1}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={schedule.isActive}
+                              onCheckedChange={(checked) => handleScheduleChange(schedule.id, 'isActive', checked)}
+                            />
+                            <span className="text-xs text-muted-foreground">Active</span>
+                          </div>
+                          {data.serviceSchedules.length > 1 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveSchedule(schedule.id)}
+                              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-xs font-medium">Name *</Label>
+                          <Input
+                            value={schedule.name}
+                            onChange={(e) => handleScheduleChange(schedule.id, 'name', e.target.value)}
+                            placeholder={data.organizationType === 'church' ? 'e.g., Sunday Service' : 'e.g., Morning Shift'}
+                            className="mt-1 h-8 text-sm"
+                          />
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-medium">Day of Week *</Label>
+                          <Select
+                            value={String(schedule.dayOfWeek)}
+                            onValueChange={(val) => handleScheduleChange(schedule.id, 'dayOfWeek', parseInt(val))}
+                          >
+                            <SelectTrigger className="mt-1 h-8 text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {daysOfWeek.map(day => (
+                                <SelectItem key={day.value} value={String(day.value)}>
+                                  {day.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-medium">Start Time *</Label>
+                          <div className="relative mt-1">
+                            <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                            <Input
+                              type="time"
+                              value={schedule.startTime}
+                              onChange={(e) => handleScheduleChange(schedule.id, 'startTime', e.target.value)}
+                              className="h-8 text-sm pl-8"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-medium">End Time *</Label>
+                          <div className="relative mt-1">
+                            <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                            <Input
+                              type="time"
+                              value={schedule.endTime}
+                              onChange={(e) => handleScheduleChange(schedule.id, 'endTime', e.target.value)}
+                              className="h-8 text-sm pl-8"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <Label className="text-xs font-medium">Description</Label>
+                          <Input
+                            value={schedule.description}
+                            onChange={(e) => handleScheduleChange(schedule.id, 'description', e.target.value)}
+                            placeholder="Optional description"
+                            className="mt-1 h-8 text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddSchedule}
+                    className="w-full h-10 text-sm gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add {getScheduleItemLabel(data.organizationType)}
+                  </Button>
+                </CardContent>
+              </>
+            )}
+
+            {/* Step 5: Admin Setup */}
+            {step === 5 && data.organizationType && (
               <>
                 <CardHeader className="pb-4">
                   <CardTitle className="flex items-center gap-2 text-base font-semibold">
@@ -690,6 +956,10 @@ const Onboarding = () => {
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">Features:</span>
                         <span className="font-medium text-foreground">{data.features.length} selected</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Schedules:</span>
+                        <span className="font-medium text-foreground">{data.serviceSchedules.length} configured</span>
                       </div>
                     </div>
                   </div>

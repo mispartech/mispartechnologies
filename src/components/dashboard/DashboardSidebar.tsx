@@ -14,7 +14,8 @@ import {
   ClipboardList,
   UserCheck,
   Shield,
-  Activity
+  Activity,
+  CalendarClock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -114,6 +115,12 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
       icon: Activity, 
       href: '/dashboard/activity-logs',
       roles: ['super_admin', 'admin']
+    },
+    { 
+      label: 'Schedules', 
+      icon: CalendarClock, 
+      href: '/dashboard/schedules',
+      roles: ['super_admin', 'admin', 'parish_pastor']
     },
     { 
       label: 'Settings', 
