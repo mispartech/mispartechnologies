@@ -444,14 +444,17 @@ const Onboarding = () => {
 
       if (orgError) throw orgError;
 
+      // Use upsert to handle both cases: profile exists or needs creation
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: user.id,
+          email: user.email,
           organization_id: orgId,
           first_name: data.adminFirstName,
           last_name: data.adminLastName,
-        })
-        .eq('id', user.id);
+          role: 'admin', // Legacy field for display purposes
+        }, { onConflict: 'id' });
 
       if (profileError) throw profileError;
 
