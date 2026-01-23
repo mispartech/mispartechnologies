@@ -363,6 +363,56 @@ export type Database = {
           },
         ]
       }
+      service_schedules: {
+        Row: {
+          attendance_buffer_minutes: number | null
+          created_at: string
+          day_of_week: number
+          description: string | null
+          end_time: string
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          start_time: string
+          updated_at: string
+        }
+        Insert: {
+          attendance_buffer_minutes?: number | null
+          created_at?: string
+          day_of_week: number
+          description?: string | null
+          end_time: string
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          start_time: string
+          updated_at?: string
+        }
+        Update: {
+          attendance_buffer_minutes?: number | null
+          created_at?: string
+          day_of_week?: number
+          description?: string | null
+          end_time?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          start_time?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_schedules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       temp_attendance: {
         Row: {
           claimed_at: string | null
