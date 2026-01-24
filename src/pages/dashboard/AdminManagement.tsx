@@ -134,6 +134,17 @@ const AdminManagement = () => {
         .eq('id', user?.id)
         .single();
 
+      // Get organization name for the email
+      let organizationName = 'Our Organization';
+      if (profile?.organization_id) {
+        const { data: org } = await supabase
+          .from('organizations')
+          .select('name')
+          .eq('id', profile.organization_id)
+          .single();
+        if (org?.name) organizationName = org.name;
+      }
+
       const { data, error } = await supabase
         .from('admin_invites')
         .insert([{
@@ -147,16 +158,37 @@ const AdminManagement = () => {
 
       if (error) throw error;
 
+      // Send the invite email via edge function
+      const { error: emailError } = await supabase.functions.invoke('send-admin-invite', {
+        body: {
+          inviteId: data.id,
+          email: inviteEmail.trim().toLowerCase(),
+          role: inviteRole,
+          token: data.token,
+          organizationName
+        }
+      });
+
+      if (emailError) {
+        console.error('Error sending email:', emailError);
+        // Still log the activity even if email fails - invite was created
+        toast({
+          title: 'Invite Created',
+          description: `Invitation created but email failed to send. You may need to resend.`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Invite Sent',
+          description: `Invitation sent to ${inviteEmail}. They will receive an email to complete registration.`,
+        });
+      }
+
       await logActivity({
         action: 'invite',
         entityType: 'admin',
         entityId: data.id,
         metadata: { email: inviteEmail, role: inviteRole }
-      });
-
-      toast({
-        title: 'Invite Sent',
-        description: `Invitation sent to ${inviteEmail}. They will receive an email to complete registration.`,
       });
 
       setInviteEmail('');
