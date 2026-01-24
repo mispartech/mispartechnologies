@@ -144,12 +144,24 @@ const ProfileSettings = () => {
     }
   };
 
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+
   const handleFaceImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setIsLoading(true);
+    setUploadProgress('Preparing upload...');
+
     try {
+      // Show uploading notification
+      toast({
+        title: 'Uploading Image',
+        description: 'Please wait while your photo is being uploaded...',
+      });
+      
+      setUploadProgress('Uploading to storage...');
+      
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}/face.${fileExt}`;
 
@@ -159,9 +171,16 @@ const ProfileSettings = () => {
 
       if (uploadError) throw uploadError;
 
+      setUploadProgress('Processing image...');
+
       const { data: { publicUrl } } = supabase.storage
         .from('face-images')
         .getPublicUrl(fileName);
+
+      // Add cache-busting parameter to force reload
+      const urlWithTimestamp = `${publicUrl}?t=${Date.now()}`;
+
+      setUploadProgress('Updating profile...');
 
       const { error: updateError } = await supabase
         .from('profiles')
@@ -170,12 +189,16 @@ const ProfileSettings = () => {
 
       if (updateError) throw updateError;
 
-      setFaceImageUrl(publicUrl);
+      // Use URL with timestamp for immediate display
+      setFaceImageUrl(urlWithTimestamp);
+      setUploadProgress(null);
+      
       toast({
         title: 'Face Image Updated',
         description: 'Your face image has been uploaded successfully.',
       });
     } catch (error: any) {
+      setUploadProgress(null);
       toast({
         title: 'Upload Failed',
         description: error.message || 'Failed to upload face image.',
@@ -333,8 +356,15 @@ const ProfileSettings = () => {
                   className="gap-2"
                 >
                   <Upload className="w-4 h-4" />
-                  {faceImageUrl ? 'Change Photo' : 'Upload Photo'}
+                  {isLoading ? (uploadProgress || 'Uploading...') : (faceImageUrl ? 'Change Photo' : 'Upload Photo')}
                 </Button>
+
+                {uploadProgress && (
+                  <div className="flex items-center gap-2 text-sm text-primary">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                    <span>{uploadProgress}</span>
+                  </div>
+                )}
 
                 <p className="text-sm text-muted-foreground text-center max-w-md">
                   For best results, use a clear, front-facing photo with good lighting. 
