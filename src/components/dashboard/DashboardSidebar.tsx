@@ -174,10 +174,10 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
 
         {/* Navigation */}
         <nav className="p-4 space-y-2">
-          {filteredMenuItems.map((item) => {
+        {filteredMenuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = currentPath === item.href || 
-              (item.href !== '/dashboard' && currentPath.startsWith(item.href));
+            // Fix: Use exact match only - don't use startsWith to avoid multiple active items
+            const isActive = currentPath === item.href;
             
             return (
               <Link
@@ -228,10 +228,10 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
 
         {/* Navigation */}
         <nav className="p-4 space-y-2">
-          {filteredMenuItems.map((item) => {
+        {filteredMenuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = currentPath === item.href || 
-              (item.href !== '/dashboard' && currentPath.startsWith(item.href));
+            // Fix: Use exact match only - don't use startsWith to avoid multiple active items
+            const isActive = currentPath === item.href;
             
             return (
               <Link

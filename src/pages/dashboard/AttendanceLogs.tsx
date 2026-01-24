@@ -67,9 +67,19 @@ const AttendanceLogs = () => {
 
   const fetchAttendance = async () => {
     try {
+      // Use explicit relationship path to avoid ambiguity
       let query = supabase
         .from('attendance')
-        .select('*, profiles(first_name, last_name, face_image_url, department_id, departments(name))')
+        .select(`
+          *,
+          profiles!attendance_user_id_fkey(
+            first_name, 
+            last_name, 
+            face_image_url, 
+            department_id,
+            departments!profiles_department_id_fkey(name)
+          )
+        `)
         .eq('date', dateFilter)
         .order('time', { ascending: false });
 
