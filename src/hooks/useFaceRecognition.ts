@@ -3,14 +3,19 @@ import { supabase } from '@/integrations/supabase/client';
 
 interface RecognizedFace {
   name: string;
-  distance: number | null;
   recognized: boolean;
+  confidence: number | null;
   bbox: number[];
+  user_id?: string;
+  temp_face_id?: string;
+  type: 'member' | 'visitor';
+  attendance_status?: 'marked' | 'already_marked' | 'recorded' | 'updated' | 'error';
 }
 
 interface RecognitionResult {
   success: boolean;
   faces: RecognizedFace[];
+  faces_count: number;
   timestamp: string;
   error?: string;
 }
@@ -18,8 +23,18 @@ interface RecognitionResult {
 interface RegistrationResult {
   success: boolean;
   user_id?: string;
+  message?: string;
   embedding_size?: number;
   error?: string;
+}
+
+interface HealthCheckResult {
+  success: boolean;
+  django_api: 'connected' | 'unreachable' | 'error';
+  edge_function: string;
+  django_status?: any;
+  error?: string;
+  timestamp: string;
 }
 
 export const useFaceRecognition = () => {
@@ -27,7 +42,10 @@ export const useFaceRecognition = () => {
   const [lastResult, setLastResult] = useState<RecognitionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const recognizeFace = useCallback(async (imageBase64: string): Promise<RecognitionResult | null> => {
+  const recognizeFace = useCallback(async (
+    imageBase64: string, 
+    organizationId?: string
+  ): Promise<RecognitionResult | null> => {
     setIsProcessing(true);
     setError(null);
 
@@ -36,11 +54,16 @@ export const useFaceRecognition = () => {
         body: {
           action: 'recognize',
           image: imageBase64,
+          organization_id: organizationId,
         },
       });
 
       if (fnError) {
         throw new Error(fnError.message);
+      }
+
+      if (!data.success) {
+        throw new Error(data.error || 'Recognition failed');
       }
 
       const result = data as RecognitionResult;
@@ -76,6 +99,10 @@ export const useFaceRecognition = () => {
         throw new Error(fnError.message);
       }
 
+      if (!data.success) {
+        throw new Error(data.error || 'Registration failed');
+      }
+
       return data as RegistrationResult;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Registration failed';
@@ -87,6 +114,30 @@ export const useFaceRecognition = () => {
     }
   }, []);
 
+  const checkHealth = useCallback(async (): Promise<HealthCheckResult | null> => {
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('face-recognition', {
+        body: { action: 'health' },
+      });
+
+      if (fnError) {
+        throw new Error(fnError.message);
+      }
+
+      return data as HealthCheckResult;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Health check failed';
+      console.error('Health check error:', err);
+      return {
+        success: false,
+        django_api: 'unreachable',
+        edge_function: 'error',
+        error: errorMessage,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  }, []);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -94,6 +145,7 @@ export const useFaceRecognition = () => {
   return {
     recognizeFace,
     registerFace,
+    checkHealth,
     isProcessing,
     lastResult,
     error,
