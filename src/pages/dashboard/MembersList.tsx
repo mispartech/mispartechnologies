@@ -25,15 +25,16 @@ import {
   MoreVertical, 
   Edit, 
   Trash2, 
-  Eye,
   UserPlus,
   Grid,
+  Upload,
   List,
   Filter
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import AddMemberModal from '@/components/dashboard/AddMemberModal';
 import EditMemberModal from '@/components/dashboard/EditMemberModal';
+import { ImportMembersModal } from '@/components/dashboard/ImportMembersModal';
 
 interface Member {
   id: string;
@@ -56,6 +57,7 @@ const MembersList = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const { toast } = useToast();
 
@@ -136,10 +138,16 @@ const MembersList = () => {
           <h1 className="text-2xl font-bold text-foreground">Members</h1>
           <p className="text-muted-foreground">Manage registered members</p>
         </div>
-        <Button onClick={() => setIsAddModalOpen(true)} className="gap-2">
-          <UserPlus className="w-4 h-4" />
-          Add Member
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsImportModalOpen(true)} className="gap-2">
+            <Upload className="w-4 h-4" />
+            Import CSV
+          </Button>
+          <Button onClick={() => setIsAddModalOpen(true)} className="gap-2">
+            <UserPlus className="w-4 h-4" />
+            Add Member
+          </Button>
+        </div>
       </div>
 
       {/* Filters and Search */}
@@ -297,6 +305,12 @@ const MembersList = () => {
       <AddMemberModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
+        onSuccess={fetchMembers}
+      />
+      
+      <ImportMembersModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
         onSuccess={fetchMembers}
       />
       

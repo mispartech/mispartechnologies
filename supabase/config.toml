@@ -1,1 +1,7 @@
 project_id = "sdyichnqroitptxloyyl"
+
+[functions.face-recognition]
+verify_jwt = false
+
+[functions.send-member-invite]
+verify_jwt = true
