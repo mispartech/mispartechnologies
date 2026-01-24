@@ -30,6 +30,7 @@ const DashboardHome = () => {
     attendedToday: 0,
     averageAttendance: 0,
   });
+  const [organization, setOrganization] = useState<any>(null);
   const [recentAttendance, setRecentAttendance] = useState<any[]>([]);
   const [recentMembers, setRecentMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +42,16 @@ const DashboardHome = () => {
   const fetchDashboardData = async () => {
     try {
       const today = format(new Date(), 'yyyy-MM-dd');
+      
+      // Fetch organization data first if we have organization_id
+      if (profile?.organization_id) {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('id', profile.organization_id)
+          .single();
+        setOrganization(orgData);
+      }
       
       // Fetch stats in parallel
       const [
@@ -86,14 +97,32 @@ const DashboardHome = () => {
 
   return (
     <div className="space-y-6">
-      {/* Welcome message */}
+      {/* Welcome message with organization context */}
       <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent rounded-2xl p-6">
-        <h1 className="text-2xl font-bold text-foreground">
-          Welcome back, {profile?.first_name || 'User'}! 👋
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Here's what's happening with your attendance system today.
-        </p>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">
+              Welcome back, {profile?.first_name || 'User'}! 👋
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Here's what's happening with your attendance system today.
+            </p>
+          </div>
+          {organization && (
+            <div className="flex flex-col items-start md:items-end gap-1">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-primary" />
+                <span className="font-semibold text-foreground">{organization.name}</span>
+              </div>
+              <div className="flex gap-2">
+                <Badge variant="secondary" className="capitalize">{organization.type?.replace('_', ' ')}</Badge>
+                {organization.size_range && (
+                  <Badge variant="outline">{organization.size_range}</Badge>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Stats Grid */}

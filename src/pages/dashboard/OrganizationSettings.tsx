@@ -11,14 +11,42 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Building2, 
-  Settings, 
   Users, 
-  Shield,
   Bell,
-  Palette,
-  Save
+  Save,
+  CheckCircle,
+  Sparkles
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+// Feature labels for display
+const featureLabels: Record<string, { label: string; description: string }> = {
+  member_tracking: { label: 'Member Attendance Tracking', description: 'Track services and activities' },
+  visitor_management: { label: 'Visitor Management', description: 'Record and follow up with visitors' },
+  department_tracking: { label: 'Department/Ministry Tracking', description: 'Monitor by group' },
+  tithe_integration: { label: 'Tithe & Offering Integration', description: 'Link attendance with giving' },
+  pastoral_reports: { label: 'Pastoral Reports', description: 'Reports for leadership' },
+  employee_attendance: { label: 'Employee Attendance', description: 'Track clock-in/out' },
+  shift_management: { label: 'Shift Management', description: 'Manage schedules' },
+  leave_management: { label: 'Leave Management', description: 'Track leave requests' },
+  overtime_tracking: { label: 'Overtime Tracking', description: 'Monitor overtime' },
+  payroll_integration: { label: 'Payroll Integration', description: 'Export for payroll' },
+  student_attendance: { label: 'Student Attendance', description: 'Track class attendance' },
+  staff_attendance: { label: 'Staff Attendance', description: 'Monitor staff presence' },
+  parent_notifications: { label: 'Parent Notifications', description: 'Alert parents' },
+  class_scheduling: { label: 'Class Scheduling', description: 'Manage schedules' },
+  exam_attendance: { label: 'Exam Attendance', description: 'Track exam presence' },
+  volunteer_tracking: { label: 'Volunteer Tracking', description: 'Track volunteer hours' },
+  event_attendance: { label: 'Event Attendance', description: 'Monitor events' },
+  donor_tracking: { label: 'Donor Engagement', description: 'Link with donors' },
+  program_tracking: { label: 'Program Tracking', description: 'Monitor participation' },
+  impact_reports: { label: 'Impact Reports', description: 'Reports for stakeholders' },
+  custom_reports: { label: 'Custom Reports', description: 'Customized reports' },
+  biometric_audit: { label: 'Biometric Audit Trail', description: 'Secure audit logs' },
+  compliance_reports: { label: 'Compliance Reports', description: 'Regulatory reports' },
+  emergency_alerts: { label: 'Emergency Alerts', description: 'Alert on-call staff' },
+  shift_handover: { label: 'Shift Handover', description: 'Manage transitions' },
+};
 
 interface Organization {
   id: string;
@@ -158,10 +186,14 @@ const OrganizationSettings = () => {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="general" className="gap-2">
             <Building2 className="w-4 h-4" />
             General
+          </TabsTrigger>
+          <TabsTrigger value="features" className="gap-2">
+            <Sparkles className="w-4 h-4" />
+            Features
           </TabsTrigger>
           <TabsTrigger value="attendance" className="gap-2">
             <Users className="w-4 h-4" />
@@ -278,6 +310,48 @@ const OrganizationSettings = () => {
                   />
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="features">
+          <Card>
+            <CardHeader>
+              <CardTitle>Enabled Features</CardTitle>
+              <CardDescription>Features configured during onboarding</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {organization.features_enabled && organization.features_enabled.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {organization.features_enabled.map((featureId) => {
+                    const feature = featureLabels[featureId];
+                    return (
+                      <div
+                        key={featureId}
+                        className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30"
+                      >
+                        <CheckCircle className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-medium">
+                            {feature?.label || featureId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                          </p>
+                          {feature?.description && (
+                            <p className="text-sm text-muted-foreground">{feature.description}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Sparkles className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No features have been enabled yet.</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Features are selected during organization onboarding.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
