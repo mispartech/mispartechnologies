@@ -45,6 +45,8 @@ serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
+          // The Django API expects `frame` (not `image`). We also include `image` for backwards compatibility.
+          frame: imageData,
           image: imageData,
           organization_id: organization_id 
         }),
@@ -53,7 +55,15 @@ serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Django API error:', response.status, errorText);
-        throw new Error(`Django API error: ${response.status} - ${errorText}`);
+        // Return 200 so the client receives a structured payload (Supabase SDK treats non-2xx as invoke error)
+        return new Response(JSON.stringify({
+          success: false,
+          error: `Django API error: ${response.status}`,
+          django_status: errorText,
+          timestamp: new Date().toISOString(),
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
 
       const data = await response.json();
@@ -182,6 +192,8 @@ serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          // The Django API expects `frame` (not `image`). We also include `image` for backwards compatibility.
+          frame: imageData,
           image: imageData,
           user_id: user_data.user_id,
           name: user_data.name,
@@ -192,7 +204,15 @@ serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Django register API error:', response.status, errorText);
-        throw new Error(`Django API error: ${response.status} - ${errorText}`);
+        // Return 200 so the client receives a structured payload (Supabase SDK treats non-2xx as invoke error)
+        return new Response(JSON.stringify({
+          success: false,
+          error: `Django API error: ${response.status}`,
+          django_status: errorText,
+          timestamp: new Date().toISOString(),
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
 
       const data = await response.json();

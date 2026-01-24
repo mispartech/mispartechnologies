@@ -62,12 +62,14 @@ export const useFaceRecognition = () => {
         throw new Error(fnError.message);
       }
 
-      if (!data.success) {
-        throw new Error(data.error || 'Recognition failed');
-      }
-
       const result = data as RecognitionResult;
       setLastResult(result);
+
+      if (!result.success) {
+        const msg = result.error || 'Recognition failed';
+        setError(msg);
+      }
+
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Recognition failed';
@@ -99,11 +101,12 @@ export const useFaceRecognition = () => {
         throw new Error(fnError.message);
       }
 
-      if (!data.success) {
-        throw new Error(data.error || 'Registration failed');
+      const result = data as RegistrationResult;
+      if (!result.success) {
+        const msg = result.error || 'Registration failed';
+        setError(msg);
       }
-
-      return data as RegistrationResult;
+      return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Registration failed';
       setError(errorMessage);
