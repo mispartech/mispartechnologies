@@ -216,6 +216,72 @@ export type Database = {
           },
         ]
       }
+      member_invites: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          department_id: string | null
+          email: string
+          expires_at: string
+          first_name: string | null
+          gender: string | null
+          id: string
+          invited_by: string | null
+          last_name: string | null
+          organization_id: string | null
+          phone_number: string | null
+          status: string
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          department_id?: string | null
+          email: string
+          expires_at?: string
+          first_name?: string | null
+          gender?: string | null
+          id?: string
+          invited_by?: string | null
+          last_name?: string | null
+          organization_id?: string | null
+          phone_number?: string | null
+          status?: string
+          token?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          department_id?: string | null
+          email?: string
+          expires_at?: string
+          first_name?: string | null
+          gender?: string | null
+          id?: string
+          invited_by?: string | null
+          last_name?: string | null
+          organization_id?: string | null
+          phone_number?: string | null
+          status?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_invites_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_invites_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       onboarding_sessions: {
         Row: {
           created_at: string
