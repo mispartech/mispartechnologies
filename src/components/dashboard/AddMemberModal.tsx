@@ -32,6 +32,20 @@ const AddMemberModal = ({ isOpen, onClose, onSuccess }: AddMemberModalProps) => 
     e.preventDefault();
     setLoading(true);
     try {
+      // Get current admin's organization
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) throw new Error('Not authenticated');
+
+      const { data: adminProfile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', currentUser.id)
+        .single();
+
+      if (!adminProfile?.organization_id) {
+        throw new Error('No organization found. Please complete onboarding first.');
+      }
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -40,12 +54,23 @@ const AddMemberModal = ({ isOpen, onClose, onSuccess }: AddMemberModalProps) => 
       if (authError) throw authError;
       
       if (authData.user) {
+        // Update profile with organization_id from admin's organization
         await supabase.from('profiles').update({
+          first_name: formData.first_name,
+          last_name: formData.last_name,
           phone_number: formData.phone_number,
           gender: formData.gender,
           department_id: formData.department_id || null,
+          organization_id: adminProfile.organization_id,
           role: 'member'
         }).eq('id', authData.user.id);
+
+        // Also create user_roles entry
+        await supabase.from('user_roles').insert({
+          user_id: authData.user.id,
+          role: 'member',
+          organization_id: adminProfile.organization_id,
+        });
       }
       
       toast({ title: 'Success', description: 'Member added successfully' });
