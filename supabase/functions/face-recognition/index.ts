@@ -39,16 +39,15 @@ serve(async (req) => {
       // Call Django API for face recognition
       console.log('Calling Django recognize-frame API...');
       
+      // The Django API only expects `frame` - do NOT send organization_id as Django doesn't use it
+      // Organization filtering happens on the Supabase side after recognition
       const response = await fetch(`${DJANGO_API_URL}/api/recognize-frame/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          // The Django API expects `frame` (not `image`). We also include `image` for backwards compatibility.
           frame: imageData,
-          image: imageData,
-          organization_id: organization_id 
         }),
       });
 
