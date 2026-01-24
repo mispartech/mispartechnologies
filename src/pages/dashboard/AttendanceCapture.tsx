@@ -31,6 +31,7 @@ interface RecognizedPerson {
 const AttendanceCapture = () => {
   const { profile } = useOutletContext<{ profile: any }>();
   const [isCameraOn, setIsCameraOn] = useState(false);
+  const [isCameraStarting, setIsCameraStarting] = useState(false);
   const [recognizedPersons, setRecognizedPersons] = useState<RecognizedPerson[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,54 +65,14 @@ const AttendanceCapture = () => {
     checkApiHealth();
   }, [checkHealth, toast]);
 
-  const startCamera = async () => {
-    try {
-      setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: 640, height: 480 }
-      });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().then(() => {
-            setIsCameraOn(true);
-            // Start auto-capture every 3 seconds
-            intervalRef.current = setInterval(captureAndRecognize, 3000);
-          }).catch((playErr) => {
-            console.error('Video play error:', playErr);
-            setError('Unable to start video playback.');
-          });
-        };
-      }
-    } catch (err) {
-      console.error('Camera error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError(`Unable to access camera: ${errorMessage}. Please check permissions.`);
-      toast({
-        title: 'Camera Error',
-        description: `Unable to access camera. Please check permissions.`,
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    setIsCameraOn(false);
-  };
-
   const captureAndRecognize = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current || isProcessing) return;
+    
+    // Check if video is actually playing
+    if (videoRef.current.readyState < 2) {
+      console.log('Video not ready yet, skipping frame capture');
+      return;
+    }
     
     try {
       const canvas = canvasRef.current;
@@ -122,11 +83,20 @@ const AttendanceCapture = () => {
       
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+      
+      // Ensure video dimensions are valid
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        console.log('Video dimensions not ready');
+        return;
+      }
+      
       context.drawImage(video, 0, 0);
       
       // Get base64 without the data URL prefix
       const frameData = canvas.toDataURL('image/jpeg', 0.8);
       const base64Image = frameData.split(',')[1];
+      
+      console.log('Sending frame for recognition, size:', base64Image.length);
       
       // Call recognition with organization context
       const result = await recognizeFace(base64Image, profile?.organization_id);
@@ -178,21 +148,138 @@ const AttendanceCapture = () => {
     }
   }, [isProcessing, recognizeFace, profile?.organization_id, recognizedPersons, soundEnabled, toast]);
 
+  const startCamera = async () => {
+    try {
+      setError(null);
+      setIsCameraStarting(true);
+      
+      console.log('Requesting camera access...');
+      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: 'user', 
+          width: { ideal: 640 }, 
+          height: { ideal: 480 } 
+        }
+      });
+      
+      console.log('Camera stream obtained:', stream.getVideoTracks()[0].label);
+      
+      if (videoRef.current) {
+        // Store stream reference
+        streamRef.current = stream;
+        
+        // Set video source
+        videoRef.current.srcObject = stream;
+        
+        // Wait for video to load metadata
+        await new Promise<void>((resolve, reject) => {
+          if (!videoRef.current) {
+            reject(new Error('Video element not found'));
+            return;
+          }
+          
+          const handleLoadedMetadata = () => {
+            console.log('Video metadata loaded:', {
+              width: videoRef.current?.videoWidth,
+              height: videoRef.current?.videoHeight
+            });
+            resolve();
+          };
+          
+          const handleError = (e: Event) => {
+            reject(new Error('Video failed to load'));
+          };
+          
+          videoRef.current.onloadedmetadata = handleLoadedMetadata;
+          videoRef.current.onerror = handleError;
+          
+          // Timeout after 10 seconds
+          setTimeout(() => reject(new Error('Video load timeout')), 10000);
+        });
+        
+        // Play video
+        await videoRef.current.play();
+        console.log('Video playing successfully');
+        
+        // Mark camera as on
+        setIsCameraOn(true);
+        setIsCameraStarting(false);
+        
+        toast({
+          title: 'Camera Started',
+          description: 'Face recognition is now active',
+        });
+        
+        // Start auto-capture every 3 seconds
+        intervalRef.current = setInterval(captureAndRecognize, 3000);
+      }
+    } catch (err) {
+      console.error('Camera error:', err);
+      setIsCameraStarting(false);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Unable to access camera: ${errorMessage}. Please check permissions.`);
+      toast({
+        title: 'Camera Error',
+        description: `Unable to access camera. Please check permissions.`,
+        variant: 'destructive',
+      });
+      
+      // Clean up any partial stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+    }
+  };
+
+  const stopCamera = useCallback(() => {
+    console.log('Stopping camera...');
+    
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('Track stopped:', track.label);
+      });
+      streamRef.current = null;
+    }
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    
+    setIsCameraOn(false);
+    setIsCameraStarting(false);
+  }, []);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopCamera();
     };
-  }, []);
+  }, [stopCamera]);
 
   const getStatusIcon = () => {
     switch (apiStatus) {
       case 'connected':
-        return <Wifi className="w-4 h-4 text-green-500" />;
+        return <Wifi className="w-4 h-4" />;
       case 'disconnected':
-        return <WifiOff className="w-4 h-4 text-destructive" />;
+        return <WifiOff className="w-4 h-4" />;
       default:
         return <RefreshCw className="w-4 h-4 animate-spin" />;
     }
+  };
+
+  const getCameraStatusText = () => {
+    if (isCameraStarting) return 'Starting camera...';
+    if (isCameraOn) return 'Camera active';
+    if (apiStatus !== 'connected') return 'Waiting for API connection...';
+    return 'Click "Start Camera" to begin';
   };
 
   return (
@@ -204,7 +291,10 @@ const AttendanceCapture = () => {
           <p className="text-muted-foreground">Use face recognition to mark attendance</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={apiStatus === 'connected' ? 'default' : 'destructive'} className="gap-1">
+          <Badge 
+            variant={apiStatus === 'connected' ? 'default' : 'destructive'} 
+            className="gap-1"
+          >
             {getStatusIcon()}
             {apiStatus === 'connected' ? 'API Connected' : apiStatus === 'checking' ? 'Checking...' : 'API Offline'}
           </Badge>
@@ -219,9 +309,14 @@ const AttendanceCapture = () => {
             onClick={isCameraOn ? stopCamera : startCamera}
             variant={isCameraOn ? 'destructive' : 'default'}
             className="gap-2"
-            disabled={apiStatus !== 'connected'}
+            disabled={apiStatus !== 'connected' || isCameraStarting}
           >
-            {isCameraOn ? (
+            {isCameraStarting ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Starting...
+              </>
+            ) : isCameraOn ? (
               <>
                 <CameraOff className="w-4 h-4" />
                 Stop Camera
@@ -246,13 +341,13 @@ const AttendanceCapture = () => {
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-green-600">{stats.members}</div>
+            <div className="text-2xl font-bold text-primary">{stats.members}</div>
             <p className="text-xs text-muted-foreground">Members</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-yellow-600">{stats.visitors}</div>
+            <div className="text-2xl font-bold text-accent-foreground">{stats.visitors}</div>
             <p className="text-xs text-muted-foreground">Visitors</p>
           </CardContent>
         </Card>
@@ -264,51 +359,72 @@ const AttendanceCapture = () => {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Camera Feed</span>
-              {isProcessing && (
-                <Badge variant="secondary" className="animate-pulse">
-                  <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-                  Processing...
-                </Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {isCameraOn && (
+                  <Badge variant="outline" className="gap-1 text-primary border-primary">
+                    <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                    Live
+                  </Badge>
+                )}
+                {isProcessing && (
+                  <Badge variant="secondary" className="animate-pulse">
+                    <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                    Processing...
+                  </Badge>
+                )}
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-              {isCameraOn ? (
-                <>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover"
-                  />
-                  {/* Scanning overlay */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-primary rounded-lg">
-                      <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-lg"></div>
-                      <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-lg"></div>
-                      <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-lg"></div>
-                      <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-lg"></div>
-                    </div>
+              {/* Video element - always rendered but visibility controlled */}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover ${isCameraOn ? 'block' : 'hidden'}`}
+              />
+              
+              {/* Scanning overlay - only shown when camera is on */}
+              {isCameraOn && (
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-primary rounded-lg">
+                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-lg"></div>
+                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-lg"></div>
+                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-lg"></div>
+                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-lg"></div>
                   </div>
-                </>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
-                  <Camera className="w-16 h-16 mb-4 opacity-50" />
-                  <p>Camera is off</p>
-                  <p className="text-sm">
-                    {apiStatus === 'connected' 
-                      ? 'Click "Start Camera" to begin' 
-                      : 'Waiting for API connection...'}
-                  </p>
+                </div>
+              )}
+              
+              {/* Placeholder when camera is off */}
+              {!isCameraOn && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
+                  {isCameraStarting ? (
+                    <>
+                      <RefreshCw className="w-16 h-16 mb-4 animate-spin opacity-50" />
+                      <p>Starting camera...</p>
+                      <p className="text-sm">Please wait</p>
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-16 h-16 mb-4 opacity-50" />
+                      <p>Camera is off</p>
+                      <p className="text-sm">{getCameraStatusText()}</p>
+                    </>
+                  )}
                 </div>
               )}
             </div>
+            
+            {/* Hidden canvas for frame capture */}
             <canvas ref={canvasRef} className="hidden" />
             
             {error && (
-              <p className="mt-4 text-sm text-destructive text-center">{error}</p>
+              <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                <p className="text-sm text-destructive text-center">{error}</p>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -332,8 +448,8 @@ const AttendanceCapture = () => {
                   >
                     <div className={`p-2 rounded-full ${
                       person.type === 'member' 
-                        ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' 
-                        : 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400'
+                        ? 'bg-primary/10 text-primary' 
+                        : 'bg-accent text-accent-foreground'
                     }`}>
                       {person.type === 'member' ? (
                         <UserCheck className="w-4 h-4" />
@@ -350,10 +466,10 @@ const AttendanceCapture = () => {
                           {person.timestamp.toLocaleTimeString()}
                         </p>
                         {person.attendanceStatus === 'marked' && (
-                          <CheckCircle2 className="w-3 h-3 text-green-500" />
+                          <CheckCircle2 className="w-3 h-3 text-primary" />
                         )}
                         {person.attendanceStatus === 'already_marked' && (
-                          <AlertCircle className="w-3 h-3 text-yellow-500" />
+                          <AlertCircle className="w-3 h-3 text-muted-foreground" />
                         )}
                       </div>
                     </div>
