@@ -22,6 +22,8 @@ import OrganizationSettings from "./pages/dashboard/OrganizationSettings";
 import AdminManagement from "./pages/dashboard/AdminManagement";
 import ActivityLogs from "./pages/dashboard/ActivityLogs";
 import ScheduleManagement from "./pages/dashboard/ScheduleManagement";
+import SiteManagement from "./pages/dashboard/SiteManagement";
+import PageWrapper from "./components/PageWrapper";
 
 const queryClient = new QueryClient();
 
@@ -29,34 +31,37 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <BrowserRouter>
       <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/onboarding" element={<Onboarding />} />
-          <Route path="/register" element={<Register />} />
-          
-          {/* Dashboard Routes */}
-          <Route path="/dashboard" element={<DashboardLayout />}>
-            <Route index element={<DashboardHome />} />
-            <Route path="members" element={<MembersList />} />
-            <Route path="temp-members" element={<TempMembersList />} />
-            <Route path="attendance" element={<AttendanceCapture />} />
-            <Route path="attendance-logs" element={<AttendanceLogs />} />
-            <Route path="departments" element={<DepartmentsList />} />
-            <Route path="profile" element={<ProfileSettings />} />
-            <Route path="face-gallery" element={<FaceGallery />} />
-            <Route path="reports" element={<Reports />} />
-            <Route path="settings" element={<OrganizationSettings />} />
-            <Route path="admin-management" element={<AdminManagement />} />
-            <Route path="activity-logs" element={<ActivityLogs />} />
-            <Route path="schedules" element={<ScheduleManagement />} />
-          </Route>
-          
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <PageWrapper>
+          <Toaster />
+          <Sonner />
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/onboarding" element={<Onboarding />} />
+            <Route path="/register" element={<Register />} />
+            
+            {/* Dashboard Routes */}
+            <Route path="/dashboard" element={<DashboardLayout />}>
+              <Route index element={<DashboardHome />} />
+              <Route path="members" element={<MembersList />} />
+              <Route path="temp-members" element={<TempMembersList />} />
+              <Route path="attendance" element={<AttendanceCapture />} />
+              <Route path="attendance-logs" element={<AttendanceLogs />} />
+              <Route path="departments" element={<DepartmentsList />} />
+              <Route path="profile" element={<ProfileSettings />} />
+              <Route path="face-gallery" element={<FaceGallery />} />
+              <Route path="reports" element={<Reports />} />
+              <Route path="settings" element={<OrganizationSettings />} />
+              <Route path="admin-management" element={<AdminManagement />} />
+              <Route path="activity-logs" element={<ActivityLogs />} />
+              <Route path="schedules" element={<ScheduleManagement />} />
+              <Route path="site-management" element={<SiteManagement />} />
+            </Route>
+            
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </PageWrapper>
       </TooltipProvider>
     </BrowserRouter>
   </QueryClientProvider>
