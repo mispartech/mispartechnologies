@@ -55,25 +55,25 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
       label: 'Dashboard', 
       icon: LayoutDashboard, 
       href: '/dashboard',
-      roles: ['super_admin', 'admin', 'manager', 'member', 'parish_pastor', 'secretary', 'usher']
+      roles: ['super_admin', 'admin', 'manager', 'member', 'parish_pastor', 'secretary', 'usher', 'department_head', 'ushering_head_admin', 'usher_admin']
     },
     { 
       label: 'Mark Attendance', 
       icon: ScanFace, 
       href: '/dashboard/attendance',
-      roles: ['super_admin', 'admin', 'manager', 'usher', 'secretary']
+      roles: ['super_admin', 'admin', 'manager', 'usher', 'secretary', 'ushering_head_admin', 'usher_admin']
     },
     { 
       label: 'Attendance Logs', 
       icon: ClipboardList, 
       href: '/dashboard/attendance-logs',
-      roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'secretary']
+      roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'secretary', 'department_head']
     },
     { 
       label: 'Members', 
       icon: Users, 
       href: '/dashboard/members',
-      roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'secretary']
+      roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'secretary', 'department_head']
     },
     { 
       label: 'Temporary Members', 
@@ -97,13 +97,13 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
       label: 'Reports', 
       icon: FileText, 
       href: '/dashboard/reports',
-      roles: ['super_admin', 'admin', 'manager', 'parish_pastor']
+      roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'department_head']
     },
     { 
       label: 'My Profile', 
       icon: UserCheck, 
       href: '/dashboard/profile',
-      roles: ['super_admin', 'admin', 'manager', 'member', 'parish_pastor', 'secretary', 'usher']
+      roles: ['super_admin', 'admin', 'manager', 'member', 'parish_pastor', 'secretary', 'usher', 'department_head', 'ushering_head_admin', 'usher_admin']
     },
     { 
       label: 'Admin Management', 
