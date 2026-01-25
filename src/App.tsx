@@ -9,7 +9,7 @@ import Onboarding from "./pages/Onboarding";
 import Register from "./pages/Register";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import DashboardLayout from "./components/dashboard/DashboardLayout";
-import DashboardHome from "./pages/dashboard/DashboardHome";
+import DashboardRouter from "./pages/dashboard/DashboardRouter";
 import MembersList from "./pages/dashboard/MembersList";
 import TempMembersList from "./pages/dashboard/TempMembersList";
 import AttendanceCapture from "./pages/dashboard/AttendanceCapture";
@@ -42,7 +42,7 @@ const App = () => (
             
             {/* Dashboard Routes */}
             <Route path="/dashboard" element={<DashboardLayout />}>
-              <Route index element={<DashboardHome />} />
+              <Route index element={<DashboardRouter />} />
               <Route path="members" element={<MembersList />} />
               <Route path="temp-members" element={<TempMembersList />} />
               <Route path="attendance" element={<AttendanceCapture />} />
