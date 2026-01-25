@@ -283,48 +283,57 @@ const AttendanceCapture = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Mark Attendance</h1>
-          <p className="text-muted-foreground">Use face recognition to mark attendance</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Mark Attendance</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Use face recognition to mark attendance</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge 
             variant={apiStatus === 'connected' ? 'default' : 'destructive'} 
             className="gap-1"
           >
             {getStatusIcon()}
-            {apiStatus === 'connected' ? 'API Connected' : apiStatus === 'checking' ? 'Checking...' : 'API Offline'}
+            <span className="hidden sm:inline">
+              {apiStatus === 'connected' ? 'API Connected' : apiStatus === 'checking' ? 'Checking...' : 'API Offline'}
+            </span>
+            <span className="sm:hidden">
+              {apiStatus === 'connected' ? 'Online' : 'Offline'}
+            </span>
           </Badge>
           <Button
             variant="outline"
             size="icon"
             onClick={() => setSoundEnabled(!soundEnabled)}
+            className="h-8 w-8 sm:h-9 sm:w-9"
           >
             {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </Button>
           <Button
             onClick={isCameraOn ? stopCamera : startCamera}
             variant={isCameraOn ? 'destructive' : 'default'}
-            className="gap-2"
+            className="gap-2 flex-1 sm:flex-none"
+            size="sm"
             disabled={apiStatus !== 'connected' || isCameraStarting}
           >
             {isCameraStarting ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                Starting...
+                <span className="hidden sm:inline">Starting...</span>
               </>
             ) : isCameraOn ? (
               <>
                 <CameraOff className="w-4 h-4" />
-                Stop Camera
+                <span className="hidden sm:inline">Stop Camera</span>
+                <span className="sm:hidden">Stop</span>
               </>
             ) : (
               <>
                 <Camera className="w-4 h-4" />
-                Start Camera
+                <span className="hidden sm:inline">Start Camera</span>
+                <span className="sm:hidden">Start</span>
               </>
             )}
           </Button>
@@ -332,22 +341,22 @@ const AttendanceCapture = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{stats.total}</div>
+          <CardContent className="p-3 sm:pt-4">
+            <div className="text-xl sm:text-2xl font-bold">{stats.total}</div>
             <p className="text-xs text-muted-foreground">Total Today</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-primary">{stats.members}</div>
+          <CardContent className="p-3 sm:pt-4">
+            <div className="text-xl sm:text-2xl font-bold text-primary">{stats.members}</div>
             <p className="text-xs text-muted-foreground">Members</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-accent-foreground">{stats.visitors}</div>
+          <CardContent className="p-3 sm:pt-4">
+            <div className="text-xl sm:text-2xl font-bold text-accent-foreground">{stats.visitors}</div>
             <p className="text-xs text-muted-foreground">Visitors</p>
           </CardContent>
         </Card>

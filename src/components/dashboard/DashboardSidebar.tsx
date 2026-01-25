@@ -15,7 +15,8 @@ import {
   UserCheck,
   Shield,
   Activity,
-  CalendarClock
+  CalendarClock,
+  Globe
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -121,6 +122,12 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
       icon: CalendarClock, 
       href: '/dashboard/schedules',
       roles: ['super_admin', 'admin', 'parish_pastor']
+    },
+    { 
+      label: 'Site Management', 
+      icon: Globe, 
+      href: '/dashboard/site-management',
+      roles: ['super_admin', 'admin']
     },
     { 
       label: 'Settings', 

@@ -227,19 +227,19 @@ const AdminManagement = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Admin Management</h1>
-          <p className="text-muted-foreground">Manage administrators and send invitations</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Admin Management</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Manage administrators and send invitations</p>
         </div>
         <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <UserPlus className="h-4 w-4 mr-2" />
               Invite Admin
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Invite New Admin</DialogTitle>
               <DialogDescription>
@@ -273,11 +273,11 @@ const AdminManagement = () => {
                 </Select>
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setInviteDialogOpen(false)}>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={() => setInviteDialogOpen(false)} className="w-full sm:w-auto">
                 Cancel
               </Button>
-              <Button onClick={handleSendInvite} disabled={sending}>
+              <Button onClick={handleSendInvite} disabled={sending} className="w-full sm:w-auto">
                 {sending ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -298,7 +298,7 @@ const AdminManagement = () => {
       {/* Current Admins */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-lg">
             <Shield className="h-5 w-5" />
             Current Administrators
           </CardTitle>
@@ -306,52 +306,85 @@ const AdminManagement = () => {
             All users with administrative privileges in your organization
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Since</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {admins.length === 0 ? (
+        <CardContent className="p-0 sm:p-6">
+          {/* Desktop Table */}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                    No administrators found
-                  </TableCell>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Since</TableHead>
                 </TableRow>
-              ) : (
-                admins.map((admin) => (
-                  <TableRow key={admin.id}>
-                    <TableCell className="font-medium">
-                      {admin.first_name && admin.last_name
-                        ? `${admin.first_name} ${admin.last_name}`
-                        : 'Not set'}
-                    </TableCell>
-                    <TableCell>{admin.email}</TableCell>
-                    <TableCell>
-                      <Badge className={getRoleBadgeColor(admin.role)}>
-                        {admin.role.replace('_', ' ')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(admin.created_at), 'MMM d, yyyy')}
+              </TableHeader>
+              <TableBody>
+                {admins.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                      No administrators found
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  admins.map((admin) => (
+                    <TableRow key={admin.id}>
+                      <TableCell className="font-medium">
+                        {admin.first_name && admin.last_name
+                          ? `${admin.first_name} ${admin.last_name}`
+                          : 'Not set'}
+                      </TableCell>
+                      <TableCell>{admin.email}</TableCell>
+                      <TableCell>
+                        <Badge className={getRoleBadgeColor(admin.role)}>
+                          {admin.role.replace('_', ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {format(new Date(admin.created_at), 'MMM d, yyyy')}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          
+          {/* Mobile Cards */}
+          <div className="md:hidden divide-y divide-border">
+            {admins.length === 0 ? (
+              <div className="text-center text-muted-foreground py-8 px-4">
+                No administrators found
+              </div>
+            ) : (
+              admins.map((admin) => (
+                <div key={admin.id} className="p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">
+                        {admin.first_name && admin.last_name
+                          ? `${admin.first_name} ${admin.last_name}`
+                          : 'Not set'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">{admin.email}</p>
+                    </div>
+                    <Badge className={getRoleBadgeColor(admin.role)}>
+                      {admin.role.replace('_', ' ')}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Since {format(new Date(admin.created_at), 'MMM d, yyyy')}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
         </CardContent>
       </Card>
 
       {/* Pending Invites */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-lg">
             <Clock className="h-5 w-5" />
             Pending Invitations
           </CardTitle>
@@ -359,60 +392,103 @@ const AdminManagement = () => {
             Invitations that haven't been accepted yet
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Sent</TableHead>
-                <TableHead>Expires</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invites.length === 0 ? (
+        <CardContent className="p-0 sm:p-6">
+          {/* Desktop Table */}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    No pending invitations
-                  </TableCell>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Sent</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
-              ) : (
-                invites.map((invite) => {
-                  const isExpired = new Date(invite.expires_at) < new Date();
-                  return (
-                    <TableRow key={invite.id}>
-                      <TableCell className="font-medium">{invite.email}</TableCell>
-                      <TableCell>
-                        <Badge className={getRoleBadgeColor(invite.invited_role)}>
-                          {invite.invited_role.replace('_', ' ')}
+              </TableHeader>
+              <TableBody>
+                {invites.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      No pending invitations
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  invites.map((invite) => {
+                    const isExpired = new Date(invite.expires_at) < new Date();
+                    return (
+                      <TableRow key={invite.id}>
+                        <TableCell className="font-medium">{invite.email}</TableCell>
+                        <TableCell>
+                          <Badge className={getRoleBadgeColor(invite.invited_role)}>
+                            {invite.invited_role.replace('_', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {format(new Date(invite.created_at), 'MMM d, yyyy')}
+                        </TableCell>
+                        <TableCell>
+                          {format(new Date(invite.expires_at), 'MMM d, yyyy')}
+                        </TableCell>
+                        <TableCell>
+                          {isExpired ? (
+                            <Badge variant="destructive" className="flex items-center gap-1 w-fit">
+                              <XCircle className="h-3 w-3" />
+                              Expired
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                              <Clock className="h-3 w-3" />
+                              Pending
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          
+          {/* Mobile Cards */}
+          <div className="md:hidden divide-y divide-border">
+            {invites.length === 0 ? (
+              <div className="text-center text-muted-foreground py-8 px-4">
+                No pending invitations
+              </div>
+            ) : (
+              invites.map((invite) => {
+                const isExpired = new Date(invite.expires_at) < new Date();
+                return (
+                  <div key={invite.id} className="p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-sm truncate flex-1 mr-2">{invite.email}</p>
+                      {isExpired ? (
+                        <Badge variant="destructive" className="flex items-center gap-1">
+                          <XCircle className="h-3 w-3" />
+                          Expired
                         </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(invite.created_at), 'MMM d, yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(invite.expires_at), 'MMM d, yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        {isExpired ? (
-                          <Badge variant="destructive" className="flex items-center gap-1 w-fit">
-                            <XCircle className="h-3 w-3" />
-                            Expired
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                            <Clock className="h-3 w-3" />
-                            Pending
-                          </Badge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+                      ) : (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Pending
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge className={getRoleBadgeColor(invite.invited_role)}>
+                        {invite.invited_role.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                    <div className="flex gap-4 text-xs text-muted-foreground">
+                      <span>Sent: {format(new Date(invite.created_at), 'MMM d')}</span>
+                      <span>Expires: {format(new Date(invite.expires_at), 'MMM d')}</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

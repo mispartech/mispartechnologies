@@ -90,7 +90,7 @@ const HeroSection = ({ onRequestDemo }: HeroSectionProps) => {
 
           {/* Trust indicators */}
           <div 
-            className={`mt-12 flex items-center gap-6 text-primary-foreground/60 text-sm transition-all duration-700 delay-700 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
+            className={`mt-12 flex flex-wrap items-center gap-4 sm:gap-6 text-primary-foreground/60 text-sm transition-all duration-700 delay-700 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
           >
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-primary-foreground/10 flex items-center justify-center">
@@ -98,14 +98,14 @@ const HeroSection = ({ onRequestDemo }: HeroSectionProps) => {
               </div>
               <span>Accuracy</span>
             </div>
-            <div className="w-px h-6 bg-primary-foreground/20" />
+            <div className="hidden sm:block w-px h-6 bg-primary-foreground/20" />
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-primary-foreground/10 flex items-center justify-center">
                 <span className="text-xs font-bold">&lt;1s</span>
               </div>
               <span>Recognition</span>
             </div>
-            <div className="w-px h-6 bg-primary-foreground/20" />
+            <div className="hidden sm:block w-px h-6 bg-primary-foreground/20" />
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-primary-foreground/10 flex items-center justify-center">
                 <span className="text-xs font-bold">24/7</span>

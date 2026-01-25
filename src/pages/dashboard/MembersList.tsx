@@ -187,75 +187,139 @@ const MembersList = () => {
       {viewMode === 'list' ? (
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Member</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Gender</TableHead>
-                  <TableHead className="w-[80px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredMembers.length === 0 ? (
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      No members found
-                    </TableCell>
+                    <TableHead>Member</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Gender</TableHead>
+                    <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
-                ) : (
-                  filteredMembers.map((member) => (
-                    <TableRow key={member.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarImage src={member.face_image_url} />
-                            <AvatarFallback className="bg-primary/10 text-primary">
-                              {member.first_name?.[0]}{member.last_name?.[0]}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium">
-                            {member.first_name} {member.last_name}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{member.email}</TableCell>
-                      <TableCell>{member.phone_number || '-'}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {member.departments?.name || 'Unassigned'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="capitalize">{member.gender || '-'}</TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setEditingMember(member)}>
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleDelete(member.id)}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                </TableHeader>
+                <TableBody>
+                  {filteredMembers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        No members found
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ) : (
+                    filteredMembers.map((member) => (
+                      <TableRow key={member.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar>
+                              <AvatarImage src={member.face_image_url} />
+                              <AvatarFallback className="bg-primary/10 text-primary">
+                                {member.first_name?.[0]}{member.last_name?.[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium">
+                              {member.first_name} {member.last_name}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>{member.email}</TableCell>
+                        <TableCell>{member.phone_number || '-'}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {member.departments?.name || 'Unassigned'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="capitalize">{member.gender || '-'}</TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setEditingMember(member)}>
+                                <Edit className="w-4 h-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => handleDelete(member.id)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            
+            {/* Mobile Card View */}
+            <div className="md:hidden divide-y divide-border">
+              {filteredMembers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No members found
+                </div>
+              ) : (
+                filteredMembers.map((member) => (
+                  <div key={member.id} className="p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Avatar>
+                          <AvatarImage src={member.face_image_url} />
+                          <AvatarFallback className="bg-primary/10 text-primary">
+                            {member.first_name?.[0]}{member.last_name?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">
+                            {member.first_name} {member.last_name}
+                          </p>
+                          <p className="text-sm text-muted-foreground">{member.email}</p>
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setEditingMember(member)}>
+                            <Edit className="w-4 h-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleDelete(member.id)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-sm">
+                      <Badge variant="outline">
+                        {member.departments?.name || 'Unassigned'}
+                      </Badge>
+                      {member.phone_number && (
+                        <Badge variant="secondary">{member.phone_number}</Badge>
+                      )}
+                      {member.gender && (
+                        <Badge variant="secondary" className="capitalize">{member.gender}</Badge>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </CardContent>
         </Card>
       ) : (

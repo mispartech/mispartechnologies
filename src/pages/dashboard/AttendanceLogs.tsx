@@ -221,70 +221,123 @@ const AttendanceLogs = () => {
         </CardContent>
       </Card>
 
-      {/* Attendance Table */}
+      {/* Attendance Table/Cards */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Member</TableHead>
-                <TableHead>Time</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Confidence</TableHead>
-                <TableHead>Emotion</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredAttendance.length === 0 ? (
+          {/* Desktop Table View */}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                    No attendance records found
-                  </TableCell>
+                  <TableHead>Member</TableHead>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Confidence</TableHead>
+                  <TableHead>Emotion</TableHead>
                 </TableRow>
-              ) : (
-                filteredAttendance.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage src={record.profiles?.face_image_url} />
-                          <AvatarFallback className="bg-primary/10 text-primary">
-                            {record.profiles?.first_name?.[0]}
-                            {record.profiles?.last_name?.[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium">
-                          {record.profiles?.first_name} {record.profiles?.last_name}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-mono">
-                        {record.time}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {record.profiles?.departments?.name || (
-                        <span className="text-muted-foreground">Unassigned</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {record.confidence_score ? (
-                        <Badge 
-                          variant={record.confidence_score > 0.8 ? 'default' : 'secondary'}
-                        >
-                          {Math.round(record.confidence_score * 100)}%
-                        </Badge>
-                      ) : '-'}
-                    </TableCell>
-                    <TableCell className="capitalize">
-                      {record.recognized_emotion || '-'}
+              </TableHeader>
+              <TableBody>
+                {filteredAttendance.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      No attendance records found
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  filteredAttendance.map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarImage src={record.profiles?.face_image_url} />
+                            <AvatarFallback className="bg-primary/10 text-primary">
+                              {record.profiles?.first_name?.[0]}
+                              {record.profiles?.last_name?.[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="font-medium">
+                            {record.profiles?.first_name} {record.profiles?.last_name}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono">
+                          {record.time}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {record.profiles?.departments?.name || (
+                          <span className="text-muted-foreground">Unassigned</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {record.confidence_score ? (
+                          <Badge 
+                            variant={record.confidence_score > 0.8 ? 'default' : 'secondary'}
+                          >
+                            {Math.round(record.confidence_score * 100)}%
+                          </Badge>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell className="capitalize">
+                        {record.recognized_emotion || '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          
+          {/* Mobile Card View */}
+          <div className="md:hidden divide-y divide-border">
+            {filteredAttendance.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No attendance records found
+              </div>
+            ) : (
+              filteredAttendance.map((record) => (
+                <div key={record.id} className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Avatar>
+                        <AvatarImage src={record.profiles?.face_image_url} />
+                        <AvatarFallback className="bg-primary/10 text-primary">
+                          {record.profiles?.first_name?.[0]}
+                          {record.profiles?.last_name?.[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-medium">
+                          {record.profiles?.first_name} {record.profiles?.last_name}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {record.profiles?.departments?.name || 'Unassigned'}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="font-mono">
+                      {record.time}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {record.confidence_score && (
+                      <Badge 
+                        variant={record.confidence_score > 0.8 ? 'default' : 'secondary'}
+                      >
+                        {Math.round(record.confidence_score * 100)}% match
+                      </Badge>
+                    )}
+                    {record.recognized_emotion && (
+                      <Badge variant="secondary" className="capitalize">
+                        {record.recognized_emotion}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
