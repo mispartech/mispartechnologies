@@ -127,6 +127,34 @@ serve(async (req) => {
               faceResult.attendance_status = 'error';
             } else {
               faceResult.attendance_status = 'marked';
+              
+              // Create notification for the user
+              try {
+                // Check if user has attendance alerts enabled
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('notification_preferences, first_name')
+                  .eq('id', face.user_id)
+                  .single();
+                
+                const prefs = profile?.notification_preferences as { attendance_alerts?: boolean } | null;
+                
+                if (prefs?.attendance_alerts !== false) {
+                  await supabase
+                    .from('notifications')
+                    .insert({
+                      user_id: face.user_id,
+                      title: 'Attendance Marked ✓',
+                      message: `Your attendance has been recorded at ${currentTime.slice(0, 5)}`,
+                      type: 'attendance',
+                      metadata: { date: today, time: currentTime },
+                    });
+                  console.log('Notification created for user:', face.user_id);
+                }
+              } catch (notifError) {
+                console.error('Failed to create notification:', notifError);
+                // Don't fail the attendance marking if notification fails
+              }
             }
           }
         } else {

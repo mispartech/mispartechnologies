@@ -16,11 +16,11 @@ import {
   Lock,
   Upload,
   Trash2,
-  Check,
   Eye,
   EyeOff
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import NotificationSettings from '@/components/dashboard/NotificationSettings';
 
 const ProfileSettings = () => {
   const { user, profile } = useOutletContext<{ user: any; profile: any }>();
@@ -233,6 +233,10 @@ const ProfileSettings = () => {
           <TabsTrigger value="security" className="gap-2">
             <Shield className="w-4 h-4" />
             Security
+          </TabsTrigger>
+          <TabsTrigger value="notifications" className="gap-2">
+            <Bell className="w-4 h-4" />
+            Notifications
           </TabsTrigger>
         </TabsList>
 
@@ -447,6 +451,10 @@ const ProfileSettings = () => {
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="notifications">
+          <NotificationSettings userId={user.id} />
         </TabsContent>
       </Tabs>
     </div>
