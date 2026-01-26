@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import StatsCard from '@/components/dashboard/StatsCard';
+import AttendanceStreakTracker from '@/components/dashboard/AttendanceStreakTracker';
 import { 
   Calendar,
   Clock, 
@@ -14,7 +15,8 @@ import {
   User,
   Building2,
   TrendingUp,
-  CalendarDays
+  CalendarDays,
+  History
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isToday } from 'date-fns';
 
@@ -190,13 +192,41 @@ const MemberDashboard = () => {
         />
       </div>
 
+      {/* Streak Tracker */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <AttendanceStreakTracker userId={profile?.id} />
+        
+        {/* Quick Actions */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button asChild className="w-full justify-start" variant="outline">
+              <Link to="/dashboard/my-attendance">
+                <History className="w-4 h-4 mr-2" />
+                View Full Attendance History
+              </Link>
+            </Button>
+            <Button asChild className="w-full justify-start" variant="outline">
+              <Link to="/dashboard/profile">
+                <User className="w-4 h-4 mr-2" />
+                Edit My Profile
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Attendance History */}
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg">My Attendance History</CardTitle>
-            <Clock className="w-5 h-5 text-muted-foreground" />
+            <CardTitle className="text-lg">Recent Attendance</CardTitle>
+            <Link to="/dashboard/my-attendance" className="text-sm text-primary hover:underline">
+              View All
+            </Link>
           </CardHeader>
           <CardContent>
             {recentAttendance.length === 0 ? (
