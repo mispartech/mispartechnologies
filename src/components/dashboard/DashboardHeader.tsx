@@ -12,8 +12,9 @@ import {
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Bell, Menu, LogOut, User as UserIcon, Settings, Home } from 'lucide-react';
+import { Menu, LogOut, User as UserIcon, Settings, Home } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import NotificationBell from './NotificationBell';
 
 interface DashboardHeaderProps {
   user: User;
@@ -93,10 +94,7 @@ const DashboardHeader = ({ user, profile, onMenuToggle }: DashboardHeaderProps) 
           </Button>
 
           {/* Notifications */}
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full"></span>
-          </Button>
+          <NotificationBell userId={user.id} />
 
           {/* User menu */}
           <DropdownMenu>

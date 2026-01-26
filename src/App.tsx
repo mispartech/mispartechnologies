@@ -18,6 +18,7 @@ import DepartmentsList from "./pages/dashboard/DepartmentsList";
 import ProfileSettings from "./pages/dashboard/ProfileSettings";
 import FaceGallery from "./pages/dashboard/FaceGallery";
 import Reports from "./pages/dashboard/Reports";
+import MyAttendanceHistory from "./pages/dashboard/MyAttendanceHistory";
 import OrganizationSettings from "./pages/dashboard/OrganizationSettings";
 import AdminManagement from "./pages/dashboard/AdminManagement";
 import ActivityLogs from "./pages/dashboard/ActivityLogs";
@@ -49,6 +50,7 @@ const App = () => (
               <Route path="attendance-logs" element={<AttendanceLogs />} />
               <Route path="departments" element={<DepartmentsList />} />
               <Route path="profile" element={<ProfileSettings />} />
+              <Route path="my-attendance" element={<MyAttendanceHistory />} />
               <Route path="face-gallery" element={<FaceGallery />} />
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<OrganizationSettings />} />
