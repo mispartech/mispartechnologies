@@ -410,6 +410,7 @@ export type Database = {
           gender: string | null
           id: string
           last_name: string | null
+          notification_preferences: Json | null
           organization_id: string | null
           phone_number: string | null
           role: string | null
@@ -425,6 +426,7 @@ export type Database = {
           gender?: string | null
           id: string
           last_name?: string | null
+          notification_preferences?: Json | null
           organization_id?: string | null
           phone_number?: string | null
           role?: string | null
@@ -440,6 +442,7 @@ export type Database = {
           gender?: string | null
           id?: string
           last_name?: string | null
+          notification_preferences?: Json | null
           organization_id?: string | null
           phone_number?: string | null
           role?: string | null
