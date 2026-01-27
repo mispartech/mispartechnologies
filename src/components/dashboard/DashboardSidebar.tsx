@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { useTerminology } from '@/contexts/TerminologyContext';
 
 interface DashboardSidebarProps {
   isOpen: boolean;
@@ -32,6 +33,7 @@ interface DashboardSidebarProps {
 
 const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardSidebarProps) => {
   const [userRole, setUserRole] = useState<string>('member');
+  const { getTerm } = useTerminology();
 
   // Fetch the actual role from user_roles table (not profiles.role)
   useEffect(() => {
@@ -51,6 +53,10 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
 
     fetchUserRole();
   }, [profile?.id]);
+
+  // Dynamic label based on organization type
+  const getMembersLabel = () => getTerm('plural', true);
+  const getTempMembersLabel = () => `Temporary ${getTerm('plural', true)}`;
 
   const menuItems = [
     { 
@@ -84,16 +90,18 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
       roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'secretary', 'department_head', 'ushering_head_admin', 'usher_admin']
     },
     { 
-      label: 'Members', 
+      label: getMembersLabel(), 
       icon: Users, 
       href: '/dashboard/members',
-      roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'secretary', 'department_head']
+      roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'secretary', 'department_head'],
+      isDynamic: true
     },
     { 
-      label: 'Temporary Members', 
+      label: getTempMembersLabel(), 
       icon: UserPlus, 
       href: '/dashboard/temp-members',
-      roles: ['super_admin', 'admin', 'manager', 'secretary']
+      roles: ['super_admin', 'admin', 'manager', 'secretary'],
+      isDynamic: true
     },
     { 
       label: 'Departments', 

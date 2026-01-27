@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,9 @@ import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import PaginationControls from '@/components/dashboard/PaginationControls';
+import AttendanceChart from '@/components/dashboard/AttendanceChart';
+import { useTerminology } from '@/contexts/TerminologyContext';
 
 interface AttendanceRecord {
   id: string;
@@ -67,7 +70,12 @@ const AttendanceHistory = () => {
   const [viewType, setViewType] = useState<'members' | 'visitors' | 'all'>('all');
   const [stats, setStats] = useState({ total: 0, members: 0, visitors: 0, avgConfidence: 0 });
   
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  
   const { toast } = useToast();
+  const { getTerm, personPlural } = useTerminology();
 
   const fetchAttendanceData = async () => {
     setIsLoading(true);
@@ -127,6 +135,9 @@ const AttendanceHistory = () => {
         avgConfidence: Math.round(avgConfidence * 100),
       });
 
+      // Reset to first page when data changes
+      setCurrentPage(1);
+
     } catch (error) {
       toast({
         title: 'Error',
@@ -142,17 +153,46 @@ const AttendanceHistory = () => {
     fetchAttendanceData();
   }, [dateFrom, dateTo]);
 
-  const filteredMembers = attendanceRecords.filter(record => {
-    if (!searchQuery) return true;
-    const fullName = `${record.profiles?.first_name || ''} ${record.profiles?.last_name || ''}`.toLowerCase();
-    const email = record.profiles?.email?.toLowerCase() || '';
-    return fullName.includes(searchQuery.toLowerCase()) || email.includes(searchQuery.toLowerCase());
-  });
+  const filteredMembers = useMemo(() => 
+    attendanceRecords.filter(record => {
+      if (!searchQuery) return true;
+      const fullName = `${record.profiles?.first_name || ''} ${record.profiles?.last_name || ''}`.toLowerCase();
+      const email = record.profiles?.email?.toLowerCase() || '';
+      return fullName.includes(searchQuery.toLowerCase()) || email.includes(searchQuery.toLowerCase());
+    }), [attendanceRecords, searchQuery]);
 
-  const filteredVisitors = tempRecords.filter(record => {
-    if (!searchQuery) return true;
-    return record.temp_face_id.toLowerCase().includes(searchQuery.toLowerCase());
-  });
+  const filteredVisitors = useMemo(() => 
+    tempRecords.filter(record => {
+      if (!searchQuery) return true;
+      return record.temp_face_id.toLowerCase().includes(searchQuery.toLowerCase());
+    }), [tempRecords, searchQuery]);
+
+  // Combined and paginated data
+  const combinedData = useMemo(() => {
+    let data: Array<{ type: 'member' | 'visitor'; record: AttendanceRecord | TempAttendanceRecord }> = [];
+    
+    if (viewType !== 'visitors') {
+      filteredMembers.forEach(record => data.push({ type: 'member', record }));
+    }
+    if (viewType !== 'members') {
+      filteredVisitors.forEach(record => data.push({ type: 'visitor', record }));
+    }
+    
+    // Sort by date and time
+    data.sort((a, b) => {
+      const dateA = new Date(`${a.record.date}T${a.record.time}`);
+      const dateB = new Date(`${b.record.date}T${b.record.time}`);
+      return dateB.getTime() - dateA.getTime();
+    });
+    
+    return data;
+  }, [filteredMembers, filteredVisitors, viewType]);
+
+  const totalPages = Math.ceil(combinedData.length / itemsPerPage);
+  const paginatedData = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return combinedData.slice(start, start + itemsPerPage);
+  }, [combinedData, currentPage, itemsPerPage]);
 
   const exportToCSV = () => {
     const headers = ['Date', 'Time', 'Type', 'Name/ID', 'Confidence', 'Detections'];
@@ -162,7 +202,7 @@ const AttendanceHistory = () => {
       rows.push([
         record.date,
         record.time,
-        'Member',
+        getTerm('title', true),
         `${record.profiles?.first_name || ''} ${record.profiles?.last_name || ''}`.trim() || 'Unknown',
         record.confidence_score ? `${Math.round(record.confidence_score * 100)}%` : 'N/A',
         String(record.face_detections || 1),
@@ -230,7 +270,7 @@ const AttendanceHistory = () => {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
               <UserCheck className="w-5 h-5 text-primary" />
-              <span className="text-sm text-muted-foreground">Members</span>
+              <span className="text-sm text-muted-foreground capitalize">{personPlural}</span>
             </div>
             <p className="text-2xl font-bold mt-1 text-primary">{stats.members}</p>
           </CardContent>
@@ -255,6 +295,9 @@ const AttendanceHistory = () => {
         </Card>
       </div>
 
+      {/* Attendance Chart */}
+      <AttendanceChart organizationId={profile?.organization_id} showVisitors={true} />
+
       {/* Filters */}
       <Card>
         <CardHeader>
@@ -271,7 +314,10 @@ const AttendanceHistory = () => {
               <Input
                 placeholder="Search by name..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="pl-9"
               />
             </div>
@@ -315,13 +361,16 @@ const AttendanceHistory = () => {
             </Popover>
 
             {/* View Type */}
-            <Select value={viewType} onValueChange={(v: 'members' | 'visitors' | 'all') => setViewType(v)}>
+            <Select value={viewType} onValueChange={(v: 'members' | 'visitors' | 'all') => {
+              setViewType(v);
+              setCurrentPage(1);
+            }}>
               <SelectTrigger>
                 <SelectValue placeholder="View type" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Records</SelectItem>
-                <SelectItem value="members">Members Only</SelectItem>
+                <SelectItem value="members" className="capitalize">{getTerm('plural', true)} Only</SelectItem>
                 <SelectItem value="visitors">Visitors Only</SelectItem>
               </SelectContent>
             </Select>
@@ -329,7 +378,7 @@ const AttendanceHistory = () => {
         </CardContent>
       </Card>
 
-      {/* Attendance Table */}
+      {/* Attendance Table with Pagination */}
       <Card>
         <CardHeader>
           <CardTitle>Attendance Records</CardTitle>
@@ -340,80 +389,85 @@ const AttendanceHistory = () => {
               <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Name / ID</TableHead>
-                    <TableHead>Confidence</TableHead>
-                    <TableHead>Detections</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {viewType !== 'visitors' && filteredMembers.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell>{format(new Date(record.date), 'MMM d, yyyy')}</TableCell>
-                      <TableCell>{record.time.slice(0, 5)}</TableCell>
-                      <TableCell>
-                        <Badge variant="default">Member</Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {`${record.profiles?.first_name || ''} ${record.profiles?.last_name || ''}`.trim() || 'Unknown'}
-                      </TableCell>
-                      <TableCell>
-                        {record.confidence_score ? (
-                          <Badge variant={record.confidence_score > 0.8 ? 'default' : 'secondary'}>
-                            {Math.round(record.confidence_score * 100)}%
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">N/A</span>
-                        )}
-                      </TableCell>
-                      <TableCell>{record.face_detections || 1}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-primary border-primary">
-                          Verified
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {viewType !== 'members' && filteredVisitors.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell>{format(new Date(record.date), 'MMM d, yyyy')}</TableCell>
-                      <TableCell>{record.time.slice(0, 5)}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">Visitor</Badge>
-                      </TableCell>
-                      <TableCell className="font-medium font-mono text-sm">
-                        {record.temp_face_id}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-muted-foreground">N/A</span>
-                      </TableCell>
-                      <TableCell>{record.face_detections || 1}</TableCell>
-                      <TableCell>
-                        <Badge 
-                          variant={record.status === 'claimed' ? 'default' : 'secondary'}
-                        >
-                          {record.status === 'claimed' ? 'Claimed' : 'Pending'}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {filteredMembers.length === 0 && filteredVisitors.length === 0 && (
+            <>
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                        No attendance records found for the selected period
-                      </TableCell>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Name / ID</TableHead>
+                      <TableHead>Confidence</TableHead>
+                      <TableHead>Detections</TableHead>
+                      <TableHead>Status</TableHead>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedData.map(({ type, record }) => (
+                      <TableRow key={record.id}>
+                        <TableCell>{format(new Date(record.date), 'MMM d, yyyy')}</TableCell>
+                        <TableCell>{record.time.slice(0, 5)}</TableCell>
+                        <TableCell>
+                          <Badge variant={type === 'member' ? 'default' : 'secondary'}>
+                            {type === 'member' ? getTerm('title', true) : 'Visitor'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {type === 'member' 
+                            ? `${(record as AttendanceRecord).profiles?.first_name || ''} ${(record as AttendanceRecord).profiles?.last_name || ''}`.trim() || 'Unknown'
+                            : (record as TempAttendanceRecord).temp_face_id
+                          }
+                        </TableCell>
+                        <TableCell>
+                          {type === 'member' && (record as AttendanceRecord).confidence_score ? (
+                            <Badge variant={(record as AttendanceRecord).confidence_score! > 0.8 ? 'default' : 'secondary'}>
+                              {Math.round((record as AttendanceRecord).confidence_score! * 100)}%
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )}
+                        </TableCell>
+                        <TableCell>{record.face_detections || 1}</TableCell>
+                        <TableCell>
+                          {type === 'member' ? (
+                            <Badge variant="outline" className="text-primary border-primary">
+                              Verified
+                            </Badge>
+                          ) : (
+                            <Badge 
+                              variant={(record as TempAttendanceRecord).status === 'claimed' ? 'default' : 'secondary'}
+                            >
+                              {(record as TempAttendanceRecord).status === 'claimed' ? 'Claimed' : 'Pending'}
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {paginatedData.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          No attendance records found for the selected period
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Pagination */}
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={combinedData.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={(value) => {
+                  setItemsPerPage(value);
+                  setCurrentPage(1);
+                }}
+              />
+            </>
           )}
         </CardContent>
       </Card>

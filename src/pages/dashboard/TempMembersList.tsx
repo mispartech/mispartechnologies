@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import StatsCard from '@/components/dashboard/StatsCard';
 import ClaimVisitorModal from '@/components/dashboard/ClaimVisitorModal';
 import { format } from 'date-fns';
+import { useTerminology } from '@/contexts/TerminologyContext';
 
 interface TempMember {
   id: string;
@@ -31,6 +32,7 @@ const TempMembersList = () => {
   const [claimModalOpen, setClaimModalOpen] = useState(false);
   const [stats, setStats] = useState({ total: 0, today: 0, thisWeek: 0 });
   const { toast } = useToast();
+  const { getTerm, personPlural } = useTerminology();
 
   useEffect(() => {
     fetchTempMembers();
@@ -87,7 +89,7 @@ const TempMembersList = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Temporary Members</h1>
+          <h1 className="text-2xl font-bold text-foreground">Temporary {getTerm('plural', true)}</h1>
           <p className="text-muted-foreground">Unregistered visitors detected by the system</p>
         </div>
       </div>
@@ -150,7 +152,7 @@ const TempMembersList = () => {
               {filteredMembers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    No temporary members found
+                    No temporary {personPlural} found
                   </TableCell>
                 </TableRow>
               ) : (
@@ -197,7 +199,7 @@ const TempMembersList = () => {
                             setClaimModalOpen(true);
                           }}>
                             <UserPlus className="w-4 h-4 mr-2" />
-                            Register as Member
+                            Register as {getTerm('title', true)}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

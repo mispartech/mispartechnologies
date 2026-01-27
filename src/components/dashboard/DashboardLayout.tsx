@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import DashboardSidebar from './DashboardSidebar';
 import DashboardHeader from './DashboardHeader';
+import { TerminologyProvider } from '@/contexts/TerminologyContext';
 
 const DashboardLayout = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -68,26 +69,28 @@ const DashboardLayout = () => {
   }
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <DashboardSidebar 
-        isOpen={sidebarOpen} 
-        onToggle={() => setSidebarOpen(!sidebarOpen)}
-        currentPath={location.pathname}
-        profile={profile}
-      />
-      
-      <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
-        <DashboardHeader 
-          user={user} 
+    <TerminologyProvider organizationId={profile?.organization_id}>
+      <div className="min-h-screen bg-muted/30">
+        <DashboardSidebar 
+          isOpen={sidebarOpen} 
+          onToggle={() => setSidebarOpen(!sidebarOpen)}
+          currentPath={location.pathname}
           profile={profile}
-          onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
         />
         
-        <main className="p-4 lg:p-6 mt-16">
-          <Outlet context={{ user, profile, session }} />
-        </main>
+        <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
+          <DashboardHeader 
+            user={user} 
+            profile={profile}
+            onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
+          />
+          
+          <main className="p-4 lg:p-6 mt-16">
+            <Outlet context={{ user, profile, session }} />
+          </main>
+        </div>
       </div>
-    </div>
+    </TerminologyProvider>
   );
 };
 

@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import StatsCard from '@/components/dashboard/StatsCard';
+import AttendanceChart from '@/components/dashboard/AttendanceChart';
+import { useTerminology } from '@/contexts/TerminologyContext';
 import { 
   Users, 
   UserCheck, 
@@ -34,6 +36,8 @@ const DashboardHome = () => {
   const [recentAttendance, setRecentAttendance] = useState<any[]>([]);
   const [recentMembers, setRecentMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  const { personPlural, getTerm } = useTerminology();
 
   useEffect(() => {
     fetchDashboardData();
@@ -128,9 +132,9 @@ const DashboardHome = () => {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
-          title="Total Members"
+          title={`Total ${getTerm('plural', true)}`}
           value={stats.totalMembers}
-          subtitle="Registered members"
+          subtitle={`Registered ${personPlural}`}
           icon={Users}
           iconClassName="bg-blue-500"
         />
@@ -156,6 +160,9 @@ const DashboardHome = () => {
           iconClassName="bg-orange-500"
         />
       </div>
+
+      {/* Attendance Chart */}
+      <AttendanceChart organizationId={profile?.organization_id} showVisitors={true} />
 
       {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -206,13 +213,13 @@ const DashboardHome = () => {
         {/* Recent Members */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg">Recent Members</CardTitle>
+            <CardTitle className="text-lg">Recent {getTerm('plural', true)}</CardTitle>
             <Users className="w-5 h-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             {recentMembers.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">
-                No members registered yet
+                No {personPlural} registered yet
               </p>
             ) : (
               <div className="space-y-4">
@@ -260,7 +267,7 @@ const DashboardHome = () => {
             />
             <QuickActionCard
               icon={Users}
-              label="View Members"
+              label={`View ${getTerm('plural', true)}`}
               href="/dashboard/members"
             />
             <QuickActionCard
