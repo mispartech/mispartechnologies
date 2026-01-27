@@ -14,6 +14,7 @@ import MembersList from "./pages/dashboard/MembersList";
 import TempMembersList from "./pages/dashboard/TempMembersList";
 import AttendanceCapture from "./pages/dashboard/AttendanceCapture";
 import AttendanceLogs from "./pages/dashboard/AttendanceLogs";
+import AttendanceHistory from "./pages/dashboard/AttendanceHistory";
 import DepartmentsList from "./pages/dashboard/DepartmentsList";
 import ProfileSettings from "./pages/dashboard/ProfileSettings";
 import FaceGallery from "./pages/dashboard/FaceGallery";
@@ -48,6 +49,7 @@ const App = () => (
               <Route path="temp-members" element={<TempMembersList />} />
               <Route path="attendance" element={<AttendanceCapture />} />
               <Route path="attendance-logs" element={<AttendanceLogs />} />
+              <Route path="attendance-history" element={<AttendanceHistory />} />
               <Route path="departments" element={<DepartmentsList />} />
               <Route path="profile" element={<ProfileSettings />} />
               <Route path="my-attendance" element={<MyAttendanceHistory />} />

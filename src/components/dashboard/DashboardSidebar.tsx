@@ -17,7 +17,8 @@ import {
   Activity,
   CalendarClock,
   Globe,
-  Calendar
+  Calendar,
+  History
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -75,6 +76,12 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
       icon: ClipboardList, 
       href: '/dashboard/attendance-logs',
       roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'secretary', 'department_head']
+    },
+    { 
+      label: 'Attendance History', 
+      icon: History, 
+      href: '/dashboard/attendance-history',
+      roles: ['super_admin', 'admin', 'manager', 'parish_pastor', 'secretary', 'department_head', 'ushering_head_admin', 'usher_admin']
     },
     { 
       label: 'Members', 
