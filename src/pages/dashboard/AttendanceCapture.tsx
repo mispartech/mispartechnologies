@@ -440,8 +440,24 @@ const AttendanceCapture = () => {
 
         {/* Recent Recognitions */}
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle>Recent Recognitions</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                setRecognizedPersons([]);
+                setStats({ total: 0, members: 0, visitors: 0 });
+                toast({
+                  title: 'Cleared',
+                  description: 'Recognition history cleared',
+                });
+              }}
+              className="h-8 w-8"
+              title="Clear recognition history"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </Button>
           </CardHeader>
           <CardContent>
             {recognizedPersons.length === 0 ? (
