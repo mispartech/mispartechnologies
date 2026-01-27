@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import StatsCard from '@/components/dashboard/StatsCard';
 import AttendanceStreakTracker from '@/components/dashboard/AttendanceStreakTracker';
 import AttendanceChart from '@/components/dashboard/AttendanceChart';
+import AttendanceHeatmap from '@/components/dashboard/AttendanceHeatmap';
 import { 
   Calendar,
   Clock, 
@@ -195,6 +196,9 @@ const MemberDashboard = () => {
 
       {/* Attendance Chart */}
       <AttendanceChart userId={profile?.id} showVisitors={false} />
+
+      {/* Attendance Heatmap */}
+      <AttendanceHeatmap userId={profile?.id} />
 
       {/* Streak Tracker */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

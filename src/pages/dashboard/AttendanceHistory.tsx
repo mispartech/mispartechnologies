@@ -23,7 +23,8 @@ import {
   Users,
   UserCheck,
   Clock,
-  Filter
+  Filter,
+  Building2
 } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -46,6 +47,7 @@ interface AttendanceRecord {
     last_name: string | null;
     email: string | null;
     department_id: string | null;
+    department?: string | null;
   };
 }
 
@@ -59,15 +61,22 @@ interface TempAttendanceRecord {
   created_at: string;
 }
 
+interface Department {
+  id: string;
+  name: string;
+}
+
 const AttendanceHistory = () => {
   const { profile } = useOutletContext<{ profile: any }>();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [tempRecords, setTempRecords] = useState<TempAttendanceRecord[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFrom, setDateFrom] = useState<Date>(subDays(new Date(), 7));
   const [dateTo, setDateTo] = useState<Date>(new Date());
   const [viewType, setViewType] = useState<'members' | 'visitors' | 'all'>('all');
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [stats, setStats] = useState({ total: 0, members: 0, visitors: 0, avgConfidence: 0 });
   
   // Pagination state
@@ -76,6 +85,21 @@ const AttendanceHistory = () => {
   
   const { toast } = useToast();
   const { getTerm, personPlural } = useTerminology();
+
+  // Fetch departments on mount
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      const { data, error } = await supabase
+        .from('departments')
+        .select('id, name')
+        .order('name');
+      
+      if (!error && data) {
+        setDepartments(data);
+      }
+    };
+    fetchDepartments();
+  }, []);
 
   const fetchAttendanceData = async () => {
     setIsLoading(true);
@@ -92,7 +116,8 @@ const AttendanceHistory = () => {
             first_name,
             last_name,
             email,
-            department_id
+            department_id,
+            department
           )
         `)
         .gte('date', fromDate)
@@ -155,11 +180,19 @@ const AttendanceHistory = () => {
 
   const filteredMembers = useMemo(() => 
     attendanceRecords.filter(record => {
-      if (!searchQuery) return true;
-      const fullName = `${record.profiles?.first_name || ''} ${record.profiles?.last_name || ''}`.toLowerCase();
-      const email = record.profiles?.email?.toLowerCase() || '';
-      return fullName.includes(searchQuery.toLowerCase()) || email.includes(searchQuery.toLowerCase());
-    }), [attendanceRecords, searchQuery]);
+      // Search filter
+      const matchesSearch = !searchQuery || (() => {
+        const fullName = `${record.profiles?.first_name || ''} ${record.profiles?.last_name || ''}`.toLowerCase();
+        const email = record.profiles?.email?.toLowerCase() || '';
+        return fullName.includes(searchQuery.toLowerCase()) || email.includes(searchQuery.toLowerCase());
+      })();
+
+      // Department filter
+      const matchesDepartment = selectedDepartment === 'all' || 
+        record.profiles?.department_id === selectedDepartment;
+
+      return matchesSearch && matchesDepartment;
+    }), [attendanceRecords, searchQuery, selectedDepartment]);
 
   const filteredVisitors = useMemo(() => 
     tempRecords.filter(record => {
@@ -307,7 +340,7 @@ const AttendanceHistory = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -360,6 +393,25 @@ const AttendanceHistory = () => {
               </PopoverContent>
             </Popover>
 
+            {/* Department Filter */}
+            <Select value={selectedDepartment} onValueChange={(v) => {
+              setSelectedDepartment(v);
+              setCurrentPage(1);
+            }}>
+              <SelectTrigger>
+                <Building2 className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             {/* View Type */}
             <Select value={viewType} onValueChange={(v: 'members' | 'visitors' | 'all') => {
               setViewType(v);
@@ -370,7 +422,7 @@ const AttendanceHistory = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Records</SelectItem>
-                <SelectItem value="members" className="capitalize">{getTerm('plural', true)} Only</SelectItem>
+                <SelectItem value="members">{getTerm('plural', true)} Only</SelectItem>
                 <SelectItem value="visitors">Visitors Only</SelectItem>
               </SelectContent>
             </Select>
