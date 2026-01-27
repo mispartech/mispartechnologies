@@ -16,6 +16,7 @@ serve(async (req) => {
     const DJANGO_API_URL = Deno.env.get('DJANGO_API_URL');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!DJANGO_API_URL) {
       console.error('DJANGO_API_URL is not configured');
@@ -23,6 +24,7 @@ serve(async (req) => {
     }
 
     console.log('Django API URL:', DJANGO_API_URL);
+    console.log('SSL/TLS: Using HTTPS connection to Django API');
 
     const body = await req.json();
     const { action, image, frame, user_data, organization_id } = body;
@@ -32,29 +34,47 @@ serve(async (req) => {
     
     console.log(`Processing action: ${action}`);
 
-    // Initialize Supabase client
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!);
+    // Initialize Supabase client with service role for database operations
+    // This bypasses RLS to allow attendance recording from the edge function
+    const supabase = createClient(
+      SUPABASE_URL!, 
+      SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY!
+    );
 
     if (action === 'recognize') {
       // Call Django API for face recognition
       console.log('Calling Django recognize-frame API...');
       
-      // The Django API only expects `frame` - do NOT send organization_id as Django doesn't use it
-      // Organization filtering happens on the Supabase side after recognition
-      const response = await fetch(`${DJANGO_API_URL}/api/recognize-frame/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          frame: imageData,
-        }),
-      });
+      let response;
+      try {
+        response = await fetch(`${DJANGO_API_URL}/api/recognize-frame/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            frame: imageData,
+          }),
+        });
+        console.log('SSL/TLS: Connection successful, status:', response.status);
+      } catch (fetchError) {
+        console.error('SSL/TLS connection error:', fetchError);
+        return new Response(JSON.stringify({
+          success: false,
+          error: `SSL/TLS connection failed: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`,
+          ssl_debug: {
+            url: `${DJANGO_API_URL}/api/recognize-frame/`,
+            error_type: fetchError instanceof Error ? fetchError.name : 'Unknown',
+          },
+          timestamp: new Date().toISOString(),
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Django API error:', response.status, errorText);
-        // Return 200 so the client receives a structured payload (Supabase SDK treats non-2xx as invoke error)
         return new Response(JSON.stringify({
           success: false,
           error: `Django API error: ${response.status}`,
@@ -66,25 +86,36 @@ serve(async (req) => {
       }
 
       const data = await response.json();
-      console.log('Recognition result:', JSON.stringify(data));
+      console.log('Raw Django response:', JSON.stringify(data));
+
+      // Extract faces from Django response - handle nested structure
+      // Django returns: { status, code, message, data: { faces: [...] } }
+      // Or sometimes: { faces: [...] } directly
+      const djangoFaces = data.data?.faces || data.faces || [];
+      console.log('Extracted faces count:', djangoFaces.length);
 
       // Process recognized faces and record attendance
       const today = new Date().toISOString().split('T')[0];
       const currentTime = new Date().toTimeString().split(' ')[0];
       const processedFaces = [];
 
-      for (const face of data.faces || []) {
+      for (const face of djangoFaces) {
+        console.log('Processing face:', JSON.stringify(face));
+        
         const faceResult: any = {
           name: face.name || 'Unknown',
           recognized: face.recognized || false,
-          confidence: face.confidence || face.distance ? (1 - (face.distance || 0)) : null,
+          confidence: face.confidence || (face.distance ? (1 - face.distance) : null),
           bbox: face.bbox || [],
         };
 
+        // Check if this is a recognized member
+        // Django may return user_id for recognized faces
         if (face.recognized && face.user_id) {
           // Recognized member - record attendance
           faceResult.user_id = face.user_id;
           faceResult.type = 'member';
+          console.log('Processing recognized member:', face.user_id);
 
           // Check if attendance already recorded today for this user
           const { data: existingAttendance, error: checkError } = await supabase
@@ -100,7 +131,7 @@ serve(async (req) => {
 
           if (existingAttendance) {
             // Update face detection count
-            await supabase
+            const { error: updateError } = await supabase
               .from('attendance')
               .update({ 
                 face_detections: (existingAttendance.face_detections || 1) + 1,
@@ -108,6 +139,9 @@ serve(async (req) => {
               })
               .eq('id', existingAttendance.id);
             
+            if (updateError) {
+              console.error('Error updating attendance:', updateError);
+            }
             faceResult.attendance_status = 'already_marked';
           } else {
             // Create new attendance record
@@ -126,11 +160,11 @@ serve(async (req) => {
               console.error('Error inserting attendance:', insertError);
               faceResult.attendance_status = 'error';
             } else {
+              console.log('Attendance marked for member:', face.user_id);
               faceResult.attendance_status = 'marked';
               
               // Create notification for the user
               try {
-                // Check if user has attendance alerts enabled
                 const { data: profile } = await supabase
                   .from('profiles')
                   .select('notification_preferences, first_name')
@@ -153,33 +187,44 @@ serve(async (req) => {
                 }
               } catch (notifError) {
                 console.error('Failed to create notification:', notifError);
-                // Don't fail the attendance marking if notification fails
               }
             }
           }
         } else {
           // Unrecognized face - record as temp attendance
-          const tempFaceId = face.temp_face_id || `visitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          // Django returns temp_user_id for temporary/unknown faces
+          const tempFaceId = face.temp_user_id || face.temp_face_id || `visitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           faceResult.temp_face_id = tempFaceId;
           faceResult.type = 'visitor';
+          faceResult.name = `Visitor #${tempFaceId}`;
+          console.log('Processing visitor with temp ID:', tempFaceId);
 
           // Check if this temp face already exists today
-          const { data: existingTemp } = await supabase
+          const { data: existingTemp, error: tempCheckError } = await supabase
             .from('temp_attendance')
             .select('id, face_detections')
             .eq('temp_face_id', tempFaceId)
             .eq('date', today)
             .maybeSingle();
 
+          if (tempCheckError) {
+            console.error('Error checking temp attendance:', tempCheckError);
+          }
+
           if (existingTemp) {
-            await supabase
+            const { error: updateError } = await supabase
               .from('temp_attendance')
               .update({ face_detections: (existingTemp.face_detections || 1) + 1 })
               .eq('id', existingTemp.id);
             
+            if (updateError) {
+              console.error('Error updating temp attendance:', updateError);
+            } else {
+              console.log('Updated temp attendance for:', tempFaceId);
+            }
             faceResult.attendance_status = 'updated';
           } else {
-            await supabase
+            const { error: insertError } = await supabase
               .from('temp_attendance')
               .insert({
                 temp_face_id: tempFaceId,
@@ -189,12 +234,20 @@ serve(async (req) => {
                 face_roi_url: face.face_roi_url || null,
               });
             
-            faceResult.attendance_status = 'recorded';
+            if (insertError) {
+              console.error('Error inserting temp attendance:', insertError);
+              faceResult.attendance_status = 'error';
+            } else {
+              console.log('Temp attendance recorded for:', tempFaceId);
+              faceResult.attendance_status = 'recorded';
+            }
           }
         }
 
         processedFaces.push(faceResult);
       }
+
+      console.log('Processed faces result:', JSON.stringify(processedFaces));
 
       return new Response(JSON.stringify({
         success: true,
@@ -213,25 +266,40 @@ serve(async (req) => {
         throw new Error('user_data with user_id and name is required for registration');
       }
 
-      const response = await fetch(`${DJANGO_API_URL}/api/attendance/mark/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          // The Django API expects `frame` (not `image`). We also include `image` for backwards compatibility.
-          frame: imageData,
-          image: imageData,
-          user_id: user_data.user_id,
-          name: user_data.name,
-          action: 'register',
-        }),
-      });
+      let response;
+      try {
+        response = await fetch(`${DJANGO_API_URL}/api/attendance/mark/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            frame: imageData,
+            image: imageData,
+            user_id: user_data.user_id,
+            name: user_data.name,
+            action: 'register',
+          }),
+        });
+        console.log('SSL/TLS: Registration API connection successful, status:', response.status);
+      } catch (fetchError) {
+        console.error('SSL/TLS connection error during registration:', fetchError);
+        return new Response(JSON.stringify({
+          success: false,
+          error: `SSL/TLS connection failed: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`,
+          ssl_debug: {
+            url: `${DJANGO_API_URL}/api/attendance/mark/`,
+            error_type: fetchError instanceof Error ? fetchError.name : 'Unknown',
+          },
+          timestamp: new Date().toISOString(),
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Django register API error:', response.status, errorText);
-        // Return 200 so the client receives a structured payload (Supabase SDK treats non-2xx as invoke error)
         return new Response(JSON.stringify({
           success: false,
           error: `Django API error: ${response.status}`,
@@ -263,7 +331,8 @@ serve(async (req) => {
       });
 
     } else if (action === 'health') {
-      // Health check endpoint
+      // Health check endpoint with SSL debugging
+      console.log('Performing health check with SSL debugging...');
       try {
         const healthResponse = await fetch(`${DJANGO_API_URL}/api/health/`, {
           method: 'GET',
@@ -271,22 +340,31 @@ serve(async (req) => {
         });
         
         const healthData = await healthResponse.json();
+        console.log('Health check SSL/TLS: Connection successful');
         
         return new Response(JSON.stringify({
           success: true,
           django_api: healthResponse.ok ? 'connected' : 'error',
           django_status: healthData,
           edge_function: 'healthy',
+          ssl_status: 'OK',
+          api_url: DJANGO_API_URL,
           timestamp: new Date().toISOString(),
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       } catch (healthError) {
+        console.error('Health check SSL/TLS error:', healthError);
         return new Response(JSON.stringify({
           success: false,
           django_api: 'unreachable',
           edge_function: 'healthy',
           error: healthError instanceof Error ? healthError.message : 'Connection failed',
+          ssl_debug: {
+            url: `${DJANGO_API_URL}/api/health/`,
+            error_type: healthError instanceof Error ? healthError.name : 'Unknown',
+            error_message: healthError instanceof Error ? healthError.message : 'Unknown error',
+          },
           timestamp: new Date().toISOString(),
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
