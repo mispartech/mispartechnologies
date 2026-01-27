@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import StatsCard from '@/components/dashboard/StatsCard';
 import AttendanceChart from '@/components/dashboard/AttendanceChart';
+import AttendanceHeatmap from '@/components/dashboard/AttendanceHeatmap';
 import { useTerminology } from '@/contexts/TerminologyContext';
 import { 
   Users, 
@@ -163,6 +164,9 @@ const DashboardHome = () => {
 
       {/* Attendance Chart */}
       <AttendanceChart organizationId={profile?.organization_id} showVisitors={true} />
+
+      {/* Attendance Heatmap */}
+      <AttendanceHeatmap organizationId={profile?.organization_id} />
 
       {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -32,10 +32,13 @@ import {
   Users,
   Calendar,
   Clock,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileText
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface AttendanceStats {
   totalRecords: number;
@@ -192,6 +195,125 @@ const Reports = () => {
     }
   };
 
+  const exportToPDF = async () => {
+    try {
+      const days = period === 'week' ? 7 : period === 'month' ? 30 : 90;
+      const startDate = format(subDays(new Date(), days), 'yyyy-MM-dd');
+      const endDate = format(new Date(), 'yyyy-MM-dd');
+
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('*, profiles(first_name, last_name, email, department)')
+        .gte('date', startDate)
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+
+      const doc = new jsPDF();
+      
+      // Title
+      doc.setFontSize(20);
+      doc.setTextColor(40);
+      doc.text('Attendance Report', 14, 22);
+      
+      // Report period
+      doc.setFontSize(12);
+      doc.setTextColor(100);
+      doc.text(`Period: ${startDate} to ${endDate}`, 14, 32);
+      doc.text(`Generated: ${format(new Date(), 'PPP p')}`, 14, 40);
+      
+      // Summary section
+      doc.setFontSize(14);
+      doc.setTextColor(40);
+      doc.text('Summary', 14, 55);
+      
+      doc.setFontSize(11);
+      doc.setTextColor(60);
+      doc.text(`Total Records: ${stats?.totalRecords || 0}`, 14, 65);
+      doc.text(`Unique Members: ${stats?.uniqueMembers || 0}`, 14, 73);
+      doc.text(`Daily Average: ${stats?.averagePerDay || 0}`, 14, 81);
+      doc.text(`Trend: ${stats?.trend === 'up' ? '↑' : stats?.trend === 'down' ? '↓' : '→'} ${stats?.trendPercentage || 0}% from previous period`, 14, 89);
+      
+      // Department breakdown
+      if (departmentData.length > 0) {
+        doc.setFontSize(14);
+        doc.setTextColor(40);
+        doc.text('Department Breakdown', 14, 105);
+        
+        let yPos = 115;
+        doc.setFontSize(10);
+        doc.setTextColor(60);
+        departmentData.forEach((dept) => {
+          doc.text(`${dept.name}: ${dept.value} records`, 18, yPos);
+          yPos += 8;
+        });
+      }
+      
+      // Time distribution
+      if (timeDistribution.length > 0) {
+        const yStart = departmentData.length > 0 ? 115 + (departmentData.length * 8) + 15 : 105;
+        doc.setFontSize(14);
+        doc.setTextColor(40);
+        doc.text('Check-in Time Distribution', 14, yStart);
+        
+        let yPos = yStart + 10;
+        doc.setFontSize(10);
+        doc.setTextColor(60);
+        timeDistribution.forEach((time) => {
+          doc.text(`${time.name}: ${time.value} records`, 18, yPos);
+          yPos += 8;
+        });
+      }
+      
+      // Add new page for detailed table
+      doc.addPage();
+      doc.setFontSize(14);
+      doc.setTextColor(40);
+      doc.text('Detailed Attendance Records', 14, 20);
+      
+      // Table data
+      const tableData = (data || []).slice(0, 100).map(row => [
+        row.date,
+        row.time?.slice(0, 5) || '',
+        `${(row.profiles as any)?.first_name || ''} ${(row.profiles as any)?.last_name || ''}`.trim() || 'Unknown',
+        (row.profiles as any)?.department || '-',
+        row.confidence_score ? `${Math.round(row.confidence_score * 100)}%` : '-',
+      ]);
+      
+      autoTable(doc, {
+        startY: 28,
+        head: [['Date', 'Time', 'Name', 'Department', 'Confidence']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [100, 100, 100] },
+        styles: { fontSize: 9 },
+      });
+      
+      // Footer
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width - 25, doc.internal.pageSize.height - 10);
+      }
+      
+      doc.save(`attendance-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+
+      toast({
+        title: 'PDF Exported',
+        description: 'The attendance report PDF has been downloaded.',
+      });
+    } catch (error) {
+      console.error('PDF export error:', error);
+      toast({
+        title: 'Export Failed',
+        description: 'Failed to export the PDF report.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -199,7 +321,7 @@ const Reports = () => {
           <h1 className="text-2xl font-bold text-foreground">Reports & Analytics</h1>
           <p className="text-muted-foreground">Attendance insights and statistics</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-32">
               <SelectValue />
@@ -212,7 +334,11 @@ const Reports = () => {
           </Select>
           <Button onClick={exportToCSV} variant="outline" className="gap-2">
             <Download className="w-4 h-4" />
-            Export
+            CSV
+          </Button>
+          <Button onClick={exportToPDF} variant="default" className="gap-2">
+            <FileText className="w-4 h-4" />
+            PDF Report
           </Button>
         </div>
       </div>

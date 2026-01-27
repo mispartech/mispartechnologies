@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFaceRecognition } from '@/hooks/useFaceRecognition';
+import FaceOverlay from '@/components/dashboard/FaceOverlay';
 
 interface RecognizedPerson {
   id: string;
@@ -26,6 +27,7 @@ interface RecognizedPerson {
   confidence?: number | null;
   timestamp: Date;
   attendanceStatus?: string;
+  bbox?: number[]; // [x1, y1, x2, y2] from cvzone.cornerRect
 }
 
 const AttendanceCapture = () => {
@@ -37,6 +39,10 @@ const AttendanceCapture = () => {
   const [error, setError] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [stats, setStats] = useState({ total: 0, members: 0, visitors: 0 });
+  const [currentFaces, setCurrentFaces] = useState<{ bbox: number[]; name?: string; type: 'member' | 'visitor'; confidence?: number | null }[]>([]);
+  const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 });
+  const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -102,6 +108,28 @@ const AttendanceCapture = () => {
       const result = await recognizeFace(base64Image, profile?.organization_id);
 
       if (result?.success && result.faces && result.faces.length > 0) {
+        // Update current faces for overlay (with bounding boxes from cvzone.cornerRect)
+        const facesForOverlay = result.faces
+          .filter(face => face.bbox && face.bbox.length >= 4)
+          .map(face => ({
+            bbox: face.bbox, // [x1, y1, x2, y2] from cvzone
+            name: face.name,
+            type: face.type === 'member' ? 'member' as const : 'visitor' as const,
+            confidence: face.confidence,
+          }));
+        setCurrentFaces(facesForOverlay);
+
+        // Update video dimensions for scaling
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+        }
+        
+        // Update container dimensions
+        if (containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          setContainerDimensions({ width: rect.width, height: rect.height });
+        }
+
         for (const face of result.faces) {
           const person: RecognizedPerson = {
             id: face.user_id || face.temp_face_id || Date.now().toString(),
@@ -110,6 +138,7 @@ const AttendanceCapture = () => {
             confidence: face.confidence,
             timestamp: new Date(),
             attendanceStatus: face.attendance_status,
+            bbox: face.bbox, // Store bbox for reference
           };
 
           // Check if already recognized recently (within 30 seconds)
@@ -142,9 +171,16 @@ const AttendanceCapture = () => {
             });
           }
         }
+        
+        // Clear faces after a delay
+        setTimeout(() => setCurrentFaces([]), 2000);
+      } else {
+        // No faces detected, clear overlay
+        setCurrentFaces([]);
       }
     } catch (err) {
       console.error('Recognition error:', err);
+      setCurrentFaces([]);
     }
   }, [isProcessing, recognizeFace, profile?.organization_id, recognizedPersons, soundEnabled, toast]);
 
@@ -385,7 +421,7 @@ const AttendanceCapture = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
+            <div ref={containerRef} className="relative aspect-video bg-muted rounded-lg overflow-hidden">
               {/* Video element - always rendered but visibility controlled */}
               <video
                 ref={videoRef}
@@ -395,10 +431,21 @@ const AttendanceCapture = () => {
                 className={`w-full h-full object-cover ${isCameraOn ? 'block' : 'hidden'}`}
               />
               
-              {/* Scanning overlay - only shown when camera is on */}
-              {isCameraOn && (
+              {/* Face detection overlay - shows bounding boxes from cvzone.cornerRect */}
+              {isCameraOn && currentFaces.length > 0 && (
+                <FaceOverlay
+                  faces={currentFaces}
+                  videoWidth={videoDimensions.width}
+                  videoHeight={videoDimensions.height}
+                  containerWidth={containerDimensions.width}
+                  containerHeight={containerDimensions.height}
+                />
+              )}
+              
+              {/* Scanning overlay - only shown when camera is on and no faces detected */}
+              {isCameraOn && currentFaces.length === 0 && (
                 <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-primary rounded-lg">
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-primary rounded-lg opacity-50">
                     <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-lg"></div>
                     <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-lg"></div>
                     <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-lg"></div>
