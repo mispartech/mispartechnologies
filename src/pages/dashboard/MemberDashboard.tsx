@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import StatsCard from '@/components/dashboard/StatsCard';
 import AttendanceStreakTracker from '@/components/dashboard/AttendanceStreakTracker';
+import AttendanceChart from '@/components/dashboard/AttendanceChart';
 import { 
   Calendar,
   Clock, 
@@ -191,6 +192,9 @@ const MemberDashboard = () => {
           iconClassName={stats.attendedToday ? "bg-green-500" : "bg-muted"}
         />
       </div>
+
+      {/* Attendance Chart */}
+      <AttendanceChart userId={profile?.id} showVisitors={false} />
 
       {/* Streak Tracker */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

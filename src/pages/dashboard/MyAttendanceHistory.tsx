@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
+import PaginationControls from '@/components/dashboard/PaginationControls';
+import AttendanceChart from '@/components/dashboard/AttendanceChart';
 
 interface DashboardContext {
   user: any;
@@ -25,20 +27,19 @@ interface DashboardContext {
 const MyAttendanceHistory = () => {
   const { profile } = useOutletContext<DashboardContext>();
   const [attendance, setAttendance] = useState<any[]>([]);
-  const [filteredAttendance, setFilteredAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
 
   useEffect(() => {
     if (profile?.id) {
       fetchAttendance();
     }
   }, [profile?.id]);
-
-  useEffect(() => {
-    filterAttendance();
-  }, [attendance, startDate, endDate]);
 
   const fetchAttendance = async () => {
     try {
@@ -58,13 +59,12 @@ const MyAttendanceHistory = () => {
     }
   };
 
-  const filterAttendance = () => {
+  const filteredAttendance = useMemo(() => {
     if (!startDate && !endDate) {
-      setFilteredAttendance(attendance);
-      return;
+      return attendance;
     }
 
-    const filtered = attendance.filter((record) => {
+    return attendance.filter((record) => {
       const recordDate = parseISO(record.date);
       if (startDate && endDate) {
         return isWithinInterval(recordDate, {
@@ -78,13 +78,19 @@ const MyAttendanceHistory = () => {
       }
       return true;
     });
+  }, [attendance, startDate, endDate]);
 
-    setFilteredAttendance(filtered);
-  };
+  // Pagination
+  const totalPages = Math.ceil(filteredAttendance.length / itemsPerPage);
+  const paginatedAttendance = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredAttendance.slice(start, start + itemsPerPage);
+  }, [filteredAttendance, currentPage, itemsPerPage]);
 
   const clearFilters = () => {
     setStartDate(undefined);
     setEndDate(undefined);
+    setCurrentPage(1);
   };
 
   const exportToCSV = () => {
@@ -133,6 +139,9 @@ const MyAttendanceHistory = () => {
         </Button>
       </div>
 
+      {/* Attendance Chart */}
+      <AttendanceChart userId={profile?.id} showVisitors={false} />
+
       {/* Filters */}
       <Card>
         <CardHeader className="pb-3">
@@ -156,7 +165,10 @@ const MyAttendanceHistory = () => {
                   <Calendar
                     mode="single"
                     selected={startDate}
-                    onSelect={setStartDate}
+                    onSelect={(date) => {
+                      setStartDate(date);
+                      setCurrentPage(1);
+                    }}
                     initialFocus
                     className="pointer-events-auto"
                   />
@@ -177,7 +189,10 @@ const MyAttendanceHistory = () => {
                   <Calendar
                     mode="single"
                     selected={endDate}
-                    onSelect={setEndDate}
+                    onSelect={(date) => {
+                      setEndDate(date);
+                      setCurrentPage(1);
+                    }}
                     initialFocus
                     className="pointer-events-auto"
                   />
@@ -227,7 +242,7 @@ const MyAttendanceHistory = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredAttendance.map((record) => (
+                    {paginatedAttendance.map((record) => (
                       <TableRow key={record.id}>
                         <TableCell className="font-medium">
                           {format(parseISO(record.date), 'EEEE, MMMM d, yyyy')}
@@ -256,7 +271,7 @@ const MyAttendanceHistory = () => {
 
               {/* Mobile Cards */}
               <div className="md:hidden space-y-3">
-                {filteredAttendance.map((record) => (
+                {paginatedAttendance.map((record) => (
                   <div key={record.id} className="p-4 border rounded-lg space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-sm">
@@ -278,6 +293,19 @@ const MyAttendanceHistory = () => {
                   </div>
                 ))}
               </div>
+
+              {/* Pagination */}
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={filteredAttendance.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={(value) => {
+                  setItemsPerPage(value);
+                  setCurrentPage(1);
+                }}
+              />
             </>
           )}
         </CardContent>

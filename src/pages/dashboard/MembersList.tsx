@@ -35,6 +35,7 @@ import { useToast } from '@/hooks/use-toast';
 import AddMemberModal from '@/components/dashboard/AddMemberModal';
 import EditMemberModal from '@/components/dashboard/EditMemberModal';
 import { ImportMembersModal } from '@/components/dashboard/ImportMembersModal';
+import { useTerminology } from '@/contexts/TerminologyContext';
 
 interface Member {
   id: string;
@@ -60,6 +61,7 @@ const MembersList = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const { toast } = useToast();
+  const { getTerm, personPlural, personSingular } = useTerminology();
 
   useEffect(() => {
     fetchMembers();
@@ -135,8 +137,8 @@ const MembersList = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Members</h1>
-          <p className="text-muted-foreground">Manage registered members</p>
+          <h1 className="text-2xl font-bold text-foreground capitalize">{personPlural}</h1>
+          <p className="text-muted-foreground">Manage registered {personPlural}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setIsImportModalOpen(true)} className="gap-2">
@@ -145,7 +147,7 @@ const MembersList = () => {
           </Button>
           <Button onClick={() => setIsAddModalOpen(true)} className="gap-2">
             <UserPlus className="w-4 h-4" />
-            Add Member
+            Add {getTerm('title', true)}
           </Button>
         </div>
       </div>
@@ -157,7 +159,7 @@ const MembersList = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search members..."
+                placeholder={`Search ${personPlural}...`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -192,7 +194,7 @@ const MembersList = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Member</TableHead>
+                    <TableHead className="capitalize">{getTerm('title', true)}</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Department</TableHead>
@@ -204,7 +206,7 @@ const MembersList = () => {
                   {filteredMembers.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        No members found
+                        No {personPlural} found
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -264,7 +266,7 @@ const MembersList = () => {
             <div className="md:hidden divide-y divide-border">
               {filteredMembers.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  No members found
+                  No {personPlural} found
                 </div>
               ) : (
                 filteredMembers.map((member) => (
