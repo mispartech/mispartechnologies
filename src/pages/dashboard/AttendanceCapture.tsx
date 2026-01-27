@@ -39,7 +39,7 @@ const AttendanceCapture = () => {
   const [error, setError] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [stats, setStats] = useState({ total: 0, members: 0, visitors: 0 });
-  const [currentFaces, setCurrentFaces] = useState<{ bbox: number[]; name?: string; type: 'member' | 'visitor'; confidence?: number | null }[]>([]);
+  const [currentFaces, setCurrentFaces] = useState<{ bbox: number[]; name?: string; type: 'member' | 'visitor'; confidence?: number | null; attendanceStatus?: string }[]>([]);
   const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 });
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -116,6 +116,7 @@ const AttendanceCapture = () => {
             name: face.name,
             type: face.type === 'member' ? 'member' as const : 'visitor' as const,
             confidence: face.confidence,
+            attendanceStatus: face.attendance_status, // Pass attendance status for green color
           }));
         setCurrentFaces(facesForOverlay);
 
