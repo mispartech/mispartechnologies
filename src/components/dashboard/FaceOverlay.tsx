@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
+import { AttendanceStatus } from '@/hooks/useFaceRecognition';
 
 interface BoundingBox {
   x1: number;
@@ -7,16 +8,15 @@ interface BoundingBox {
   y2: number;
 }
 
-interface RecognizedFaceOverlay {
+export interface FaceOverlayData {
   bbox: number[]; // [x1, y1, x2, y2] from cvzone.cornerRect
   name?: string;
-  type: 'member' | 'visitor';
+  attendanceStatus: AttendanceStatus;
   confidence?: number | null;
-  attendanceStatus?: string; // 'detecting' | 'marked' | 'already_marked' | 'recorded' or others
 }
 
 interface FaceOverlayProps {
-  faces: RecognizedFaceOverlay[];
+  faces: FaceOverlayData[];
   videoWidth: number;
   videoHeight: number;
   containerWidth: number;
@@ -34,16 +34,27 @@ const DETECTION_COLORS = [
   'hsl(45, 90%, 55%)', // Yellow
 ];
 
-const SUCCESS_COLOR = 'hsl(142, 76%, 45%)'; // Green for confirmed attendance
+const SUCCESS_COLOR = 'hsl(142, 76%, 45%)'; // Green for confirmed
+const VISITOR_COLOR = 'hsl(45, 93%, 47%)'; // Amber for visitors
 
 /**
  * Converts cvzone.cornerRect bounding box format [x1, y1, x2, y2] to position/size
  * cvzone.cornerRect uses: x1, y1, x2, y2 = bbox | w, h = x2 - x1, y2 - y1
  */
 const parseBoundingBox = (bbox: number[]): BoundingBox | null => {
-  if (!bbox || bbox.length < 4) return null;
+  if (!bbox || !Array.isArray(bbox) || bbox.length < 4) return null;
   
-  const [x1, y1, x2, y2] = bbox;
+  // Validate all values are valid numbers
+  const values = bbox.slice(0, 4);
+  if (!values.every(v => typeof v === 'number' && !isNaN(v) && isFinite(v))) {
+    return null;
+  }
+  
+  const [x1, y1, x2, y2] = values;
+  
+  // Validate box has positive dimensions
+  if (x2 <= x1 || y2 <= y1) return null;
+  
   return { x1, y1, x2, y2 };
 };
 
@@ -52,9 +63,7 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
 
   // Animate color change during detection
   useEffect(() => {
-    const hasDetectingFaces = faces.some(
-      f => !f.attendanceStatus || f.attendanceStatus === 'detecting'
-    );
+    const hasDetectingFaces = faces.some(f => f.attendanceStatus === 'detecting');
 
     if (hasDetectingFaces) {
       const interval = setInterval(() => {
@@ -65,55 +74,76 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
   }, [faces]);
 
   // Calculate scale factors
-  const scaleX = containerWidth / videoWidth;
-  const scaleY = containerHeight / videoHeight;
+  const scaleX = containerWidth > 0 && videoWidth > 0 ? containerWidth / videoWidth : 1;
+  const scaleY = containerHeight > 0 && videoHeight > 0 ? containerHeight / videoHeight : 1;
 
   const scaledFaces = useMemo(() => {
-    return faces.map((face) => {
-      const box = parseBoundingBox(face.bbox);
-      if (!box) return null;
+    if (!faces || !Array.isArray(faces)) return [];
+    
+    return faces
+      .filter(face => face && typeof face === 'object' && face.bbox)
+      .map((face) => {
+        const box = parseBoundingBox(face.bbox);
+        if (!box) return null;
 
-      // Calculate width and height from x1,y1,x2,y2 (cvzone format)
-      const w = box.x2 - box.x1;
-      const h = box.y2 - box.y1;
+        // Calculate width and height from x1,y1,x2,y2 (cvzone format)
+        const w = box.x2 - box.x1;
+        const h = box.y2 - box.y1;
 
-      // Scale to container size
-      const scaledX = box.x1 * scaleX;
-      const scaledY = box.y1 * scaleY;
-      const scaledW = w * scaleX;
-      const scaledH = h * scaleY;
+        // Scale to container size
+        const scaledX = box.x1 * scaleX;
+        const scaledY = box.y1 * scaleY;
+        const scaledW = w * scaleX;
+        const scaledH = h * scaleY;
 
-      return {
-        ...face,
-        x: scaledX,
-        y: scaledY,
-        width: scaledW,
-        height: scaledH,
-      };
-    }).filter(Boolean);
+        return {
+          ...face,
+          x: scaledX,
+          y: scaledY,
+          width: scaledW,
+          height: scaledH,
+        };
+      })
+      .filter((face): face is NonNullable<typeof face> => face !== null);
   }, [faces, scaleX, scaleY]);
 
-  if (videoWidth === 0 || videoHeight === 0) return null;
+  if (videoWidth === 0 || videoHeight === 0 || scaledFaces.length === 0) return null;
 
   return (
     <div className="absolute inset-0 pointer-events-none">
       {scaledFaces.map((face, index) => {
-        if (!face) return null;
-
         // Determine color based on attendance status
-        const isConfirmed = face.attendanceStatus === 'marked' || 
-                           face.attendanceStatus === 'already_marked' || 
-                           face.attendanceStatus === 'recorded';
-        
-        const currentColor = isConfirmed 
-          ? SUCCESS_COLOR 
-          : DETECTION_COLORS[colorIndex];
+        let currentColor: string;
+        let showGlow = false;
+        let labelText = '';
+        let showLabel = false;
+
+        switch (face.attendanceStatus) {
+          case 'confirmed':
+            currentColor = SUCCESS_COLOR;
+            showGlow = true;
+            labelText = face.name || 'Confirmed';
+            showLabel = true;
+            break;
+          case 'visitor':
+            currentColor = VISITOR_COLOR;
+            showGlow = true;
+            labelText = 'Visitor';
+            showLabel = true;
+            break;
+          case 'detecting':
+          default:
+            currentColor = DETECTION_COLORS[colorIndex];
+            showGlow = false;
+            showLabel = false;
+            break;
+        }
 
         const cornerLength = Math.min(30, face.width * 0.2, face.height * 0.2);
         const cornerThickness = 4;
 
         return (
-          <div key={index}>
+          <div key={`face-${index}`}>
             {/* Corner rectangles - cvzone.cornerRect style (l=30, t=5) - NO border rectangle */}
             
             {/* Top-left corner */}
@@ -125,7 +155,7 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
                 width: cornerLength,
                 height: cornerThickness,
                 backgroundColor: currentColor,
-                boxShadow: isConfirmed ? `0 0 10px ${currentColor}` : 'none',
+                boxShadow: showGlow ? `0 0 10px ${currentColor}` : 'none',
               }}
             />
             <div
@@ -136,7 +166,7 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
                 width: cornerThickness,
                 height: cornerLength,
                 backgroundColor: currentColor,
-                boxShadow: isConfirmed ? `0 0 10px ${currentColor}` : 'none',
+                boxShadow: showGlow ? `0 0 10px ${currentColor}` : 'none',
               }}
             />
             
@@ -149,7 +179,7 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
                 width: cornerLength,
                 height: cornerThickness,
                 backgroundColor: currentColor,
-                boxShadow: isConfirmed ? `0 0 10px ${currentColor}` : 'none',
+                boxShadow: showGlow ? `0 0 10px ${currentColor}` : 'none',
               }}
             />
             <div
@@ -160,7 +190,7 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
                 width: cornerThickness,
                 height: cornerLength,
                 backgroundColor: currentColor,
-                boxShadow: isConfirmed ? `0 0 10px ${currentColor}` : 'none',
+                boxShadow: showGlow ? `0 0 10px ${currentColor}` : 'none',
               }}
             />
             
@@ -173,7 +203,7 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
                 width: cornerLength,
                 height: cornerThickness,
                 backgroundColor: currentColor,
-                boxShadow: isConfirmed ? `0 0 10px ${currentColor}` : 'none',
+                boxShadow: showGlow ? `0 0 10px ${currentColor}` : 'none',
               }}
             />
             <div
@@ -184,7 +214,7 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
                 width: cornerThickness,
                 height: cornerLength,
                 backgroundColor: currentColor,
-                boxShadow: isConfirmed ? `0 0 10px ${currentColor}` : 'none',
+                boxShadow: showGlow ? `0 0 10px ${currentColor}` : 'none',
               }}
             />
             
@@ -197,7 +227,7 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
                 width: cornerLength,
                 height: cornerThickness,
                 backgroundColor: currentColor,
-                boxShadow: isConfirmed ? `0 0 10px ${currentColor}` : 'none',
+                boxShadow: showGlow ? `0 0 10px ${currentColor}` : 'none',
               }}
             />
             <div
@@ -208,24 +238,24 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
                 width: cornerThickness,
                 height: cornerLength,
                 backgroundColor: currentColor,
-                boxShadow: isConfirmed ? `0 0 10px ${currentColor}` : 'none',
+                boxShadow: showGlow ? `0 0 10px ${currentColor}` : 'none',
               }}
             />
 
-            {/* Name label - only show when confirmed */}
-            {face.name && isConfirmed && (
+            {/* Name/status label - only show when confirmed or visitor */}
+            {showLabel && (
               <div
                 className="absolute text-white text-xs px-2 py-1 rounded-b-md font-medium"
                 style={{
                   left: face.x,
                   top: face.y + face.height + 4,
                   maxWidth: face.width,
-                  backgroundColor: SUCCESS_COLOR,
-                  boxShadow: `0 2px 8px ${SUCCESS_COLOR}50`,
+                  backgroundColor: currentColor,
+                  boxShadow: `0 2px 8px ${currentColor}50`,
                 }}
               >
-                <span className="truncate block">{face.name}</span>
-                {face.confidence != null && (
+                <span className="truncate block">{labelText}</span>
+                {face.attendanceStatus === 'confirmed' && face.confidence != null && (
                   <span className="text-white/80 text-[10px]">
                     {Math.round(face.confidence * 100)}%
                   </span>
@@ -234,7 +264,7 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
             )}
 
             {/* Detecting indicator */}
-            {!isConfirmed && (
+            {face.attendanceStatus === 'detecting' && (
               <div
                 className="absolute text-white text-xs px-2 py-1 rounded-md font-medium animate-pulse"
                 style={{
