@@ -249,8 +249,13 @@ serve(async (req) => {
 
       console.log('Processed faces result:', JSON.stringify(processedFaces));
 
+      // Pass through the Django response code for frontend state management
+      const responseCode = data.code || (processedFaces.length > 0 ? 'FACE_RECOGNIZED' : 'NO_FACE');
+      console.log('Response code:', responseCode);
+
       return new Response(JSON.stringify({
         success: true,
+        code: responseCode,
         faces: processedFaces,
         faces_count: processedFaces.length,
         timestamp: new Date().toISOString(),
