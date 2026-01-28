@@ -479,17 +479,7 @@ const AttendanceCapture = () => {
                 />
               )}
               
-              {/* Scanning overlay - only shown when camera is on and no faces detected */}
-              {isCameraOn && facesForOverlay.length === 0 && (
-                <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-primary rounded-lg opacity-50">
-                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-lg"></div>
-                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-lg"></div>
-                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-lg"></div>
-                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-lg"></div>
-                  </div>
-                </div>
-              )}
+              {/* No static placeholder - FaceOverlay handles all detection visualization */}
               
               {/* Placeholder when camera is off */}
               {!isCameraOn && (
