@@ -273,27 +273,9 @@ export const useFaceRecognition = () => {
       }
 
       if (newFaces.length > 0) {
-        // Update tracked faces with new data
-        setTrackedFaces(prev => {
-          const updated = [...prev];
-          
-          for (const newFace of newFaces) {
-            const existingIndex = updated.findIndex(f => f.id === newFace.id);
-            if (existingIndex >= 0) {
-              // Update existing face
-              updated[existingIndex] = {
-                ...updated[existingIndex],
-                ...newFace,
-                lastSeen: Date.now(),
-              };
-            } else {
-              // Add new face
-              updated.push(newFace);
-            }
-          }
-          
-          return updated;
-        });
+        // CRITICAL FIX: Replace faces entirely instead of accumulating
+        // Each frame's result is the source of truth - no merging with previous state
+        setTrackedFaces(newFaces);
         
         lastUpdateRef.current = Date.now();
         
@@ -305,12 +287,14 @@ export const useFaceRecognition = () => {
         return { success: true, faces: newFaces, shouldPause };
       }
 
-      // No new faces but shouldKeepDetecting - return current state
+      // No new faces but shouldKeepDetecting - keep current state briefly
       if (shouldKeepDetecting) {
         return { success: true, faces: trackedFaces, shouldPause: false };
       }
 
-      return { success: true, faces: trackedFaces, shouldPause: false };
+      // No faces and not keeping - clear
+      setTrackedFaces([]);
+      return { success: true, faces: [], shouldPause: false };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Recognition failed';
       setError(errorMessage);
