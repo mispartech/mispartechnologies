@@ -6,19 +6,15 @@ import { Badge } from '@/components/ui/badge';
 import { 
   Camera, 
   CameraOff, 
-  UserCheck, 
-  UserX, 
   RefreshCw,
   Volume2,
   VolumeX,
   Wifi,
   WifiOff,
-  CheckCircle2,
-  AlertCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFaceRecognition } from '@/hooks/useFaceRecognition';
-import FaceOverlay from '@/components/dashboard/FaceOverlay';
+import { useFaceRecognition, TrackedFace } from '@/hooks/useFaceRecognition';
+import FaceOverlay, { FaceOverlayData } from '@/components/dashboard/FaceOverlay';
 
 interface RecognizedPerson {
   id: string;
@@ -27,8 +23,11 @@ interface RecognizedPerson {
   confidence?: number | null;
   timestamp: Date;
   attendanceStatus?: string;
-  bbox?: number[]; // [x1, y1, x2, y2] from cvzone.cornerRect
 }
+
+// Throttle configuration
+const FRAME_INTERVAL_MS = 150; // 150ms between frames (6-7 FPS)
+const PAUSE_DURATION_MS = 3000; // Pause for 3s after confirmed/visitor
 
 const AttendanceCapture = () => {
   const { profile } = useOutletContext<{ profile: any }>();
@@ -39,7 +38,6 @@ const AttendanceCapture = () => {
   const [error, setError] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [stats, setStats] = useState({ total: 0, members: 0, visitors: 0 });
-  const [currentFaces, setCurrentFaces] = useState<{ bbox: number[]; name?: string; type: 'member' | 'visitor'; confidence?: number | null; attendanceStatus?: string }[]>([]);
   const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 });
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -47,10 +45,27 @@ const AttendanceCapture = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const captureLoopRef = useRef<number | null>(null);
+  const lastCaptureTimeRef = useRef<number>(0);
+  const pausedUntilRef = useRef<number>(0);
   
   const { toast } = useToast();
-  const { recognizeFace, checkHealth, isProcessing } = useFaceRecognition();
+  const { 
+    recognizeFace, 
+    checkHealth, 
+    isProcessing, 
+    trackedFaces, 
+    clearFaces,
+    pruneStalefaces 
+  } = useFaceRecognition();
+
+  // Convert TrackedFace to FaceOverlayData
+  const facesForOverlay: FaceOverlayData[] = trackedFaces.map(face => ({
+    bbox: face.bbox,
+    name: face.name,
+    attendanceStatus: face.attendanceStatus,
+    confidence: face.confidence,
+  }));
 
   // Check API health on mount
   useEffect(() => {
@@ -71,12 +86,48 @@ const AttendanceCapture = () => {
     checkApiHealth();
   }, [checkHealth, toast]);
 
-  const captureAndRecognize = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current || isProcessing) return;
+  // Update container dimensions on resize
+  useEffect(() => {
+    const updateContainerDimensions = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerDimensions({ width: rect.width, height: rect.height });
+      }
+    };
+
+    updateContainerDimensions();
+    window.addEventListener('resize', updateContainerDimensions);
+    return () => window.removeEventListener('resize', updateContainerDimensions);
+  }, []);
+
+  // Prune stale faces periodically
+  useEffect(() => {
+    if (!isCameraOn) return;
     
-    // Check if video is actually playing
+    const interval = setInterval(pruneStalefaces, 1000);
+    return () => clearInterval(interval);
+  }, [isCameraOn, pruneStalefaces]);
+
+  const captureAndRecognize = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const now = Date.now();
+    
+    // Check if we're paused
+    if (now < pausedUntilRef.current) {
+      return;
+    }
+    
+    // Throttle frame submission
+    if (now - lastCaptureTimeRef.current < FRAME_INTERVAL_MS) {
+      return;
+    }
+    
+    // Skip if already processing
+    if (isProcessing) return;
+    
+    // Check if video is ready
     if (videoRef.current.readyState < 2) {
-      console.log('Video not ready yet, skipping frame capture');
       return;
     }
     
@@ -87,62 +138,48 @@ const AttendanceCapture = () => {
       
       if (!context) return;
       
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
       // Ensure video dimensions are valid
       if (video.videoWidth === 0 || video.videoHeight === 0) {
-        console.log('Video dimensions not ready');
         return;
       }
       
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
       context.drawImage(video, 0, 0);
+      
+      // Update video dimensions for overlay scaling
+      setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
       
       // Get base64 without the data URL prefix
       const frameData = canvas.toDataURL('image/jpeg', 0.8);
       const base64Image = frameData.split(',')[1];
       
-      console.log('Sending frame for recognition, size:', base64Image.length);
+      lastCaptureTimeRef.current = now;
       
-      // Call recognition with organization context
+      // Call recognition
       const result = await recognizeFace(base64Image, profile?.organization_id);
 
-      if (result?.success && result.faces && result.faces.length > 0) {
-        // Update current faces for overlay (with bounding boxes from cvzone.cornerRect)
-        const facesForOverlay = result.faces
-          .filter(face => face.bbox && face.bbox.length >= 4)
-          .map(face => ({
-            bbox: face.bbox, // [x1, y1, x2, y2] from cvzone
-            name: face.name,
-            type: face.type === 'member' ? 'member' as const : 'visitor' as const,
-            confidence: face.confidence,
-            attendanceStatus: face.attendance_status, // Pass attendance status for green color
-          }));
-        setCurrentFaces(facesForOverlay);
-
-        // Update video dimensions for scaling
-        if (video.videoWidth > 0 && video.videoHeight > 0) {
-          setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
-        }
-        
-        // Update container dimensions
-        if (containerRef.current) {
-          const rect = containerRef.current.getBoundingClientRect();
-          setContainerDimensions({ width: rect.width, height: rect.height });
+      if (result.success && result.faces.length > 0) {
+        // Check if we should pause (confirmed or visitor detected)
+        if (result.shouldPause) {
+          pausedUntilRef.current = Date.now() + PAUSE_DURATION_MS;
         }
 
+        // Process each face for history and stats
         for (const face of result.faces) {
+          // Skip faces that are still detecting
+          if (face.attendanceStatus === 'detecting') continue;
+          
           const person: RecognizedPerson = {
-            id: face.user_id || face.temp_face_id || Date.now().toString(),
-            type: face.type === 'member' ? 'member' : 'visitor',
+            id: face.id,
+            type: face.type,
             name: face.name,
             confidence: face.confidence,
             timestamp: new Date(),
-            attendanceStatus: face.attendance_status,
-            bbox: face.bbox, // Store bbox for reference
+            attendanceStatus: face.backendStatus,
           };
 
-          // Check if already recognized recently (within 30 seconds)
+          // Check if already in recent history (within 30 seconds)
           const exists = recognizedPersons.find(
             p => p.id === person.id && 
             (Date.now() - p.timestamp.getTime()) < 30000
@@ -163,7 +200,7 @@ const AttendanceCapture = () => {
               audio.play().catch(() => {});
             }
 
-            const isNewAttendance = face.attendance_status === 'marked' || face.attendance_status === 'recorded';
+            const isNewAttendance = face.backendStatus === 'marked' || face.backendStatus === 'recorded';
             
             toast({
               title: person.type === 'member' ? 'Member Recognized' : 'Visitor Detected',
@@ -172,25 +209,37 @@ const AttendanceCapture = () => {
             });
           }
         }
-        
-        // Clear faces after a delay
-        setTimeout(() => setCurrentFaces([]), 2000);
-      } else {
-        // No faces detected, clear overlay
-        setCurrentFaces([]);
       }
     } catch (err) {
-      console.error('Recognition error:', err);
-      setCurrentFaces([]);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[AttendanceCapture] Recognition error:', err);
+      }
     }
   }, [isProcessing, recognizeFace, profile?.organization_id, recognizedPersons, soundEnabled, toast]);
+
+  // Capture loop using requestAnimationFrame
+  const startCaptureLoop = useCallback(() => {
+    const loop = () => {
+      if (!isCameraOn) return;
+      
+      captureAndRecognize();
+      captureLoopRef.current = requestAnimationFrame(loop);
+    };
+    
+    captureLoopRef.current = requestAnimationFrame(loop);
+  }, [isCameraOn, captureAndRecognize]);
+
+  const stopCaptureLoop = useCallback(() => {
+    if (captureLoopRef.current) {
+      cancelAnimationFrame(captureLoopRef.current);
+      captureLoopRef.current = null;
+    }
+  }, []);
 
   const startCamera = async () => {
     try {
       setError(null);
       setIsCameraStarting(true);
-      
-      console.log('Requesting camera access...');
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
@@ -200,59 +249,40 @@ const AttendanceCapture = () => {
         }
       });
       
-      console.log('Camera stream obtained:', stream.getVideoTracks()[0].label);
-      
       if (videoRef.current) {
-        // Store stream reference
         streamRef.current = stream;
-        
-        // Set video source
         videoRef.current.srcObject = stream;
         
-        // Wait for video to load metadata
         await new Promise<void>((resolve, reject) => {
           if (!videoRef.current) {
             reject(new Error('Video element not found'));
             return;
           }
           
-          const handleLoadedMetadata = () => {
-            console.log('Video metadata loaded:', {
-              width: videoRef.current?.videoWidth,
-              height: videoRef.current?.videoHeight
-            });
-            resolve();
-          };
-          
-          const handleError = (e: Event) => {
-            reject(new Error('Video failed to load'));
-          };
+          const handleLoadedMetadata = () => resolve();
+          const handleError = () => reject(new Error('Video failed to load'));
           
           videoRef.current.onloadedmetadata = handleLoadedMetadata;
           videoRef.current.onerror = handleError;
           
-          // Timeout after 10 seconds
           setTimeout(() => reject(new Error('Video load timeout')), 10000);
         });
         
-        // Play video
         await videoRef.current.play();
-        console.log('Video playing successfully');
         
-        // Mark camera as on
         setIsCameraOn(true);
         setIsCameraStarting(false);
+        
+        // Reset pause state
+        pausedUntilRef.current = 0;
+        lastCaptureTimeRef.current = 0;
         
         toast({
           title: 'Camera Started',
           description: 'Face recognition is now active',
         });
-        
-        // Start auto-capture every 3 seconds
-        intervalRef.current = setInterval(captureAndRecognize, 3000);
       }
     } catch (err) {
-      console.error('Camera error:', err);
       setIsCameraStarting(false);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(`Unable to access camera: ${errorMessage}. Please check permissions.`);
@@ -262,7 +292,6 @@ const AttendanceCapture = () => {
         variant: 'destructive',
       });
       
-      // Clean up any partial stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
@@ -271,18 +300,10 @@ const AttendanceCapture = () => {
   };
 
   const stopCamera = useCallback(() => {
-    console.log('Stopping camera...');
-    
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+    stopCaptureLoop();
     
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        track.stop();
-        console.log('Track stopped:', track.label);
-      });
+      streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
     
@@ -290,9 +311,21 @@ const AttendanceCapture = () => {
       videoRef.current.srcObject = null;
     }
     
+    clearFaces();
     setIsCameraOn(false);
     setIsCameraStarting(false);
-  }, []);
+  }, [stopCaptureLoop, clearFaces]);
+
+  // Start/stop capture loop when camera state changes
+  useEffect(() => {
+    if (isCameraOn) {
+      startCaptureLoop();
+    } else {
+      stopCaptureLoop();
+    }
+    
+    return () => stopCaptureLoop();
+  }, [isCameraOn, startCaptureLoop, stopCaptureLoop]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -300,6 +333,13 @@ const AttendanceCapture = () => {
       stopCamera();
     };
   }, [stopCamera]);
+
+  const resetSession = () => {
+    setRecognizedPersons([]);
+    setStats({ total: 0, members: 0, visitors: 0 });
+    clearFaces();
+    pausedUntilRef.current = 0;
+  };
 
   const getStatusIcon = () => {
     switch (apiStatus) {
@@ -310,13 +350,6 @@ const AttendanceCapture = () => {
       default:
         return <RefreshCw className="w-4 h-4 animate-spin" />;
     }
-  };
-
-  const getCameraStatusText = () => {
-    if (isCameraStarting) return 'Starting camera...';
-    if (isCameraOn) return 'Camera active';
-    if (apiStatus !== 'connected') return 'Waiting for API connection...';
-    return 'Click "Start Camera" to begin';
   };
 
   return (
@@ -432,10 +465,13 @@ const AttendanceCapture = () => {
                 className={`w-full h-full object-cover ${isCameraOn ? 'block' : 'hidden'}`}
               />
               
-              {/* Face detection overlay - shows bounding boxes from cvzone.cornerRect */}
-              {isCameraOn && currentFaces.length > 0 && (
+              {/* Hidden canvas for frame capture */}
+              <canvas ref={canvasRef} className="hidden" />
+              
+              {/* Face detection overlay */}
+              {isCameraOn && facesForOverlay.length > 0 && (
                 <FaceOverlay
-                  faces={currentFaces}
+                  faces={facesForOverlay}
                   videoWidth={videoDimensions.width}
                   videoHeight={videoDimensions.height}
                   containerWidth={containerDimensions.width}
@@ -444,7 +480,7 @@ const AttendanceCapture = () => {
               )}
               
               {/* Scanning overlay - only shown when camera is on and no faces detected */}
-              {isCameraOn && currentFaces.length === 0 && (
+              {isCameraOn && facesForOverlay.length === 0 && (
                 <div className="absolute inset-0 pointer-events-none">
                   <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-primary rounded-lg opacity-50">
                     <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-lg"></div>
@@ -468,93 +504,61 @@ const AttendanceCapture = () => {
                     <>
                       <Camera className="w-16 h-16 mb-4 opacity-50" />
                       <p>Camera is off</p>
-                      <p className="text-sm">{getCameraStatusText()}</p>
+                      <p className="text-sm">Click "Start Camera" to begin</p>
                     </>
                   )}
                 </div>
               )}
+              
+              {error && (
+                <div className="absolute inset-0 flex items-center justify-center bg-destructive/10">
+                  <p className="text-destructive text-center px-4">{error}</p>
+                </div>
+              )}
             </div>
-            
-            {/* Hidden canvas for frame capture */}
-            <canvas ref={canvasRef} className="hidden" />
-            
-            {error && (
-              <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <p className="text-sm text-destructive text-center">{error}</p>
-              </div>
-            )}
           </CardContent>
         </Card>
 
         {/* Recent Recognitions */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle>Recent Recognitions</CardTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                setRecognizedPersons([]);
-                setStats({ total: 0, members: 0, visitors: 0 });
-                toast({
-                  title: 'Cleared',
-                  description: 'Recognition history cleared',
-                });
-              }}
-              className="h-8 w-8"
-              title="Clear recognition history"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </Button>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Recent</span>
+              <Button variant="ghost" size="sm" onClick={resetSession}>
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            {recognizedPersons.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
-                No recognitions yet
-              </p>
-            ) : (
-              <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                {recognizedPersons.map((person, index) => (
-                  <div 
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {recognizedPersons.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No recognitions yet
+                </p>
+              ) : (
+                recognizedPersons.map((person, index) => (
+                  <div
                     key={`${person.id}-${index}`}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
+                    className="flex items-center gap-3 p-2 rounded-lg bg-muted/50"
                   >
-                    <div className={`p-2 rounded-full ${
-                      person.type === 'member' 
-                        ? 'bg-primary/10 text-primary' 
-                        : 'bg-accent text-accent-foreground'
-                    }`}>
-                      {person.type === 'member' ? (
-                        <UserCheck className="w-4 h-4" />
-                      ) : (
-                        <UserX className="w-4 h-4" />
-                      )}
-                    </div>
+                    <div className={`w-2 h-2 rounded-full ${
+                      person.type === 'member' ? 'bg-primary' : 'bg-amber-500'
+                    }`} />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">
+                      <p className="text-sm font-medium truncate">
                         {person.name || 'Unknown'}
                       </p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-muted-foreground">
-                          {person.timestamp.toLocaleTimeString()}
-                        </p>
-                        {person.attendanceStatus === 'marked' && (
-                          <CheckCircle2 className="w-3 h-3 text-primary" />
-                        )}
-                        {person.attendanceStatus === 'already_marked' && (
-                          <AlertCircle className="w-3 h-3 text-muted-foreground" />
-                        )}
-                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {person.timestamp.toLocaleTimeString()}
+                      </p>
                     </div>
-                    {person.confidence != null && (
-                      <Badge variant="secondary" className="text-xs">
-                        {Math.round(person.confidence * 100)}%
-                      </Badge>
-                    )}
+                    <Badge variant={person.type === 'member' ? 'default' : 'secondary'} className="text-xs">
+                      {person.type === 'member' ? 'Member' : 'Visitor'}
+                    </Badge>
                   </div>
-                ))}
-              </div>
-            )}
+                ))
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
