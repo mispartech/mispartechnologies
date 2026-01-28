@@ -64,14 +64,20 @@ const parseBoundingBox = (bbox: number[]): BoundingBox | null => {
 };
 
 /**
- * Generate a stable key for a face based on its bbox position
+ * Generate a stable key for a face based on its bbox dimensions (x, y, width, height)
+ * This ensures each unique face position gets a unique key without accumulation
  */
-const generateFaceKey = (bbox: number[], index: number): string => {
-  if (!bbox || bbox.length < 4) return `face-fallback-${index}`;
-  // Round to nearest 10px for stability while still being unique per detection
-  const x = Math.round(bbox[0] / 10) * 10;
-  const y = Math.round(bbox[1] / 10) * 10;
-  return `face-${x}-${y}-${index}`;
+const generateFaceKey = (bbox: number[]): string => {
+  if (!bbox || bbox.length < 4) return `face-invalid-${Math.random()}`;
+  const [x1, y1, x2, y2] = bbox;
+  const w = x2 - x1;
+  const h = y2 - y1;
+  // Round to nearest 5px for slight position stability while maintaining uniqueness
+  const rx = Math.round(x1 / 5) * 5;
+  const ry = Math.round(y1 / 5) * 5;
+  const rw = Math.round(w / 5) * 5;
+  const rh = Math.round(h / 5) * 5;
+  return `face-${rx}-${ry}-${rw}-${rh}`;
 };
 
 const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, containerHeight }: FaceOverlayProps) => {
@@ -122,7 +128,7 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
 
       return {
         ...face,
-        key: generateFaceKey(face.bbox, index),
+        key: generateFaceKey(face.bbox),
         x: scaledX,
         y: scaledY,
         width: scaledW,
