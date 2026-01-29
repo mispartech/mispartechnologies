@@ -5,22 +5,24 @@ import { supabase } from '@/integrations/supabase/client';
 type ResponseCode = 
   | 'NO_FACE' 
   | 'FACE_UNSTABLE' 
+  | 'FACES_DETECTED'
   | 'FACE_RECOGNIZED' 
   | 'TEMP_USER' 
   | 'ALREADY_MARKED'
   | 'ERROR';
 
 // Attendance status for each face
-export type AttendanceStatus = 'detecting' | 'confirmed' | 'visitor';
+// 'detecting' = scanning animation, 'confirmed' = recognized member with attendance
+export type AttendanceStatus = 'detecting' | 'confirmed';
 
 export interface TrackedFace {
-  id: string; // user_id or temp_face_id
+  id: string; // user_id for recognized members only
   name: string;
-  type: 'member' | 'visitor';
+  type: 'member'; // Only members create attendance - no visitors
   confidence: number | null;
   bbox: number[];
   attendanceStatus: AttendanceStatus;
-  backendStatus?: string; // 'marked' | 'already_marked' | 'recorded' | 'updated' | 'error'
+  backendStatus?: string; // 'marked' | 'already_marked' | 'error'
   lastSeen: number; // timestamp
 }
 
@@ -66,55 +68,44 @@ const FACE_TIMEOUT_MS = 3000;
 
 /**
  * Safely parse a raw face object from the backend
- * Returns null if the face is invalid or missing required fields
+ * Returns null if the face is invalid, unrecognized, or unstable
+ * ONLY returns TrackedFace for recognized members (recognized === true)
  */
 const parseRawFace = (raw: unknown, index: number): TrackedFace | null => {
   if (!raw || typeof raw !== 'object') {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn(`[useFaceRecognition] Invalid face at index ${index}: not an object`);
-    }
     return null;
   }
 
-  const face = raw as RawFace;
+  const face = raw as RawFace & { recognized?: boolean; user_type?: string; unstable?: boolean };
+
+  // CRITICAL: Only process recognized faces with a valid user_id
+  // Unrecognized, unknown, or unstable faces should NOT create attendance entries
+  if (!face.recognized || !face.user_id) {
+    // Return null - this face should only show scanning overlay, not attendance entry
+    return null;
+  }
 
   // Validate bbox - must be array with at least 4 numbers
   if (!face.bbox || !Array.isArray(face.bbox) || face.bbox.length < 4) {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn(`[useFaceRecognition] Invalid bbox at index ${index}:`, face.bbox);
-    }
     return null;
   }
 
   // Validate bbox values are numbers
   const bboxValid = face.bbox.slice(0, 4).every(v => typeof v === 'number' && !isNaN(v));
   if (!bboxValid) {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn(`[useFaceRecognition] Invalid bbox values at index ${index}:`, face.bbox);
-    }
     return null;
   }
 
-  // Determine face ID
-  const id = face.user_id || face.temp_face_id || `unknown_${Date.now()}_${index}`;
-  
-  // Determine type
-  const type: 'member' | 'visitor' = face.type === 'member' ? 'member' : 'visitor';
-  
   // Determine attendance status based on backend response
   let attendanceStatus: AttendanceStatus = 'detecting';
-  if (face.attendance_status === 'marked' || 
-      face.attendance_status === 'already_marked' || 
-      face.attendance_status === 'recorded') {
-    attendanceStatus = type === 'member' ? 'confirmed' : 'visitor';
-  } else if (type === 'visitor' && face.temp_face_id) {
-    attendanceStatus = 'visitor';
+  if (face.attendance_status === 'marked' || face.attendance_status === 'already_marked') {
+    attendanceStatus = 'confirmed';
   }
 
   return {
-    id,
-    name: face.name || (type === 'visitor' ? 'Visitor' : 'Unknown'),
-    type,
+    id: face.user_id,
+    name: face.name || 'Unknown Member',
+    type: 'member',
     confidence: typeof face.confidence === 'number' ? face.confidence : null,
     bbox: face.bbox.slice(0, 4),
     attendanceStatus,
@@ -124,17 +115,49 @@ const parseRawFace = (raw: unknown, index: number): TrackedFace | null => {
 };
 
 /**
+ * Extract bbox data for scanning overlay from unrecognized faces
+ * Returns bbox arrays for faces that should show scanning animation only
+ */
+const extractScanningBboxes = (faces: unknown[]): number[][] => {
+  const bboxes: number[][] = [];
+  
+  for (const raw of faces) {
+    if (!raw || typeof raw !== 'object') continue;
+    
+    const face = raw as RawFace & { recognized?: boolean };
+    
+    // Only extract bbox for unrecognized faces (for scanning overlay)
+    if (face.recognized === true) continue; // Skip recognized - handled by parseRawFace
+    
+    if (face.bbox && Array.isArray(face.bbox) && face.bbox.length >= 4) {
+      const bboxValid = face.bbox.slice(0, 4).every(v => typeof v === 'number' && !isNaN(v));
+      if (bboxValid) {
+        bboxes.push(face.bbox.slice(0, 4));
+      }
+    }
+  }
+  
+  return bboxes;
+};
+
+/**
  * Interpret backend response code and determine how to update face state
+ * Only creates TrackedFace entries for recognized members
+ * Unrecognized/unstable faces return scanning bboxes for overlay only
  */
 const interpretResponseCode = (result: RecognitionResult): {
   shouldClearFaces: boolean;
   shouldKeepDetecting: boolean;
   faces: TrackedFace[];
+  scanningBboxes: number[][]; // Bboxes for scanning overlay (unrecognized faces)
 } => {
   const code = result.code;
   
-  // Parse faces safely
+  // Parse recognized faces only (creates attendance entries)
   const parsedFaces: TrackedFace[] = [];
+  // Extract bboxes for scanning overlay (unrecognized/unstable faces)
+  let scanningBboxes: number[][] = [];
+  
   if (result.faces && Array.isArray(result.faces)) {
     for (let i = 0; i < result.faces.length; i++) {
       const parsed = parseRawFace(result.faces[i], i);
@@ -142,51 +165,57 @@ const interpretResponseCode = (result: RecognitionResult): {
         parsedFaces.push(parsed);
       }
     }
+    // Get bboxes for unrecognized faces (scanning overlay only)
+    scanningBboxes = extractScanningBboxes(result.faces);
   }
 
   switch (code) {
     case 'NO_FACE':
-      return { shouldClearFaces: true, shouldKeepDetecting: false, faces: [] };
+      return { shouldClearFaces: true, shouldKeepDetecting: false, faces: [], scanningBboxes: [] };
     
     case 'FACE_UNSTABLE':
-      // Keep detecting - face is present but not stable enough
+    case 'FACES_DETECTED':
+      // Face detected but not recognized - show scanning overlay only
+      // Do NOT create attendance entries for unstable/unrecognized faces
       return { 
         shouldClearFaces: false, 
         shouldKeepDetecting: true, 
-        faces: parsedFaces.map(f => ({ ...f, attendanceStatus: 'detecting' as AttendanceStatus }))
+        faces: parsedFaces, // Only recognized faces
+        scanningBboxes, // Unrecognized faces for scanning overlay
       };
     
     case 'FACE_RECOGNIZED':
       return { 
         shouldClearFaces: false, 
         shouldKeepDetecting: false, 
-        faces: parsedFaces.map(f => ({ 
-          ...f, 
-          attendanceStatus: f.type === 'member' ? 'confirmed' as AttendanceStatus : f.attendanceStatus 
-        }))
-      };
-    
-    case 'TEMP_USER':
-      return { 
-        shouldClearFaces: false, 
-        shouldKeepDetecting: false, 
-        faces: parsedFaces.map(f => ({ ...f, attendanceStatus: 'visitor' as AttendanceStatus }))
+        faces: parsedFaces.map(f => ({ ...f, attendanceStatus: 'confirmed' as AttendanceStatus })),
+        scanningBboxes: [],
       };
     
     case 'ALREADY_MARKED':
       return { 
         shouldClearFaces: false, 
         shouldKeepDetecting: false, 
-        faces: parsedFaces.map(f => ({ ...f, attendanceStatus: 'confirmed' as AttendanceStatus }))
+        faces: parsedFaces.map(f => ({ ...f, attendanceStatus: 'confirmed' as AttendanceStatus })),
+        scanningBboxes: [],
+      };
+    
+    // TEMP_USER is disabled - do not create visitor entries
+    case 'TEMP_USER':
+      // Ignore temp users - just show scanning overlay
+      return { 
+        shouldClearFaces: false, 
+        shouldKeepDetecting: true, 
+        faces: [], // No attendance entry
+        scanningBboxes,
       };
     
     default:
-      // Legacy handling - no code, just check if faces exist
+      // Legacy handling - only process recognized faces
       if (parsedFaces.length > 0) {
-        return { shouldClearFaces: false, shouldKeepDetecting: false, faces: parsedFaces };
+        return { shouldClearFaces: false, shouldKeepDetecting: false, faces: parsedFaces, scanningBboxes: [] };
       }
-      // No faces in response but no explicit NO_FACE code - keep previous state briefly
-      return { shouldClearFaces: false, shouldKeepDetecting: true, faces: [] };
+      return { shouldClearFaces: false, shouldKeepDetecting: true, faces: [], scanningBboxes };
   }
 };
 
@@ -194,24 +223,26 @@ export const useFaceRecognition = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Persistent face state that survives across frames
+  // Tracked faces = only recognized members with attendance entries
   const [trackedFaces, setTrackedFaces] = useState<TrackedFace[]>([]);
+  // Scanning bboxes = unrecognized/unstable faces (overlay only, no attendance)
+  const [scanningBboxes, setScanningBboxes] = useState<number[][]>([]);
   const lastUpdateRef = useRef<number>(Date.now());
 
   /**
    * Check if capture should be paused based on current face state
+   * Only pause for confirmed attendance (not for scanning)
    */
   const shouldPauseCapture = useCallback((): boolean => {
-    return trackedFaces.some(
-      face => face.attendanceStatus === 'confirmed' || face.attendanceStatus === 'visitor'
-    );
+    return trackedFaces.some(face => face.attendanceStatus === 'confirmed');
   }, [trackedFaces]);
 
   /**
-   * Clear all tracked faces - call when face leaves frame or explicit reset
+   * Clear all tracked faces and scanning bboxes
    */
   const clearFaces = useCallback(() => {
     setTrackedFaces([]);
+    setScanningBboxes([]);
     lastUpdateRef.current = Date.now();
   }, []);
 
@@ -231,6 +262,7 @@ export const useFaceRecognition = () => {
   ): Promise<{ 
     success: boolean; 
     faces: TrackedFace[]; 
+    scanningBboxes: number[][];
     shouldPause: boolean;
     error?: string;
   }> => {
@@ -255,58 +287,60 @@ export const useFaceRecognition = () => {
       if (!result.success) {
         const msg = result.error || 'Recognition failed';
         setError(msg);
-        // Don't clear faces on error - keep previous state
         return { 
           success: false, 
           faces: trackedFaces, 
+          scanningBboxes,
           shouldPause: false,
           error: msg 
         };
       }
 
-      // Interpret response and update state
-      const { shouldClearFaces, shouldKeepDetecting, faces: newFaces } = interpretResponseCode(result);
+      // Interpret response - only recognized faces become TrackedFaces
+      // Unrecognized faces only provide bboxes for scanning overlay
+      const { 
+        shouldClearFaces, 
+        shouldKeepDetecting, 
+        faces: newFaces,
+        scanningBboxes: newScanningBboxes 
+      } = interpretResponseCode(result);
       
       if (shouldClearFaces) {
         setTrackedFaces([]);
-        return { success: true, faces: [], shouldPause: false };
+        setScanningBboxes([]);
+        return { success: true, faces: [], scanningBboxes: [], shouldPause: false };
       }
+
+      // Update scanning bboxes for unrecognized faces (overlay only)
+      setScanningBboxes(newScanningBboxes);
 
       if (newFaces.length > 0) {
-        // CRITICAL FIX: Replace faces entirely instead of accumulating
-        // Each frame's result is the source of truth - no merging with previous state
+        // Only recognized members create attendance entries
         setTrackedFaces(newFaces);
-        
         lastUpdateRef.current = Date.now();
         
-        // Check if we should pause (confirmed or visitor)
-        const shouldPause = newFaces.some(
-          f => f.attendanceStatus === 'confirmed' || f.attendanceStatus === 'visitor'
-        );
+        // Only pause for confirmed attendance
+        const shouldPause = newFaces.some(f => f.attendanceStatus === 'confirmed');
         
-        return { success: true, faces: newFaces, shouldPause };
+        return { success: true, faces: newFaces, scanningBboxes: newScanningBboxes, shouldPause };
       }
 
-      // No new faces but shouldKeepDetecting - keep current state briefly
+      // No recognized faces - keep scanning overlay active if detecting
       if (shouldKeepDetecting) {
-        return { success: true, faces: trackedFaces, shouldPause: false };
+        return { success: true, faces: [], scanningBboxes: newScanningBboxes, shouldPause: false };
       }
 
-      // No faces and not keeping - clear
       setTrackedFaces([]);
-      return { success: true, faces: [], shouldPause: false };
+      setScanningBboxes([]);
+      return { success: true, faces: [], scanningBboxes: [], shouldPause: false };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Recognition failed';
       setError(errorMessage);
-      if (process.env.NODE_ENV === 'development') {
-        console.error('[useFaceRecognition] Error:', err);
-      }
-      // Don't clear faces on error
-      return { success: false, faces: trackedFaces, shouldPause: false, error: errorMessage };
+      return { success: false, faces: trackedFaces, scanningBboxes, shouldPause: false, error: errorMessage };
     } finally {
       setIsProcessing(false);
     }
-  }, [trackedFaces]);
+  }, [trackedFaces, scanningBboxes]);
 
   const registerFace = useCallback(async (
     imageBase64: string,
@@ -382,6 +416,7 @@ export const useFaceRecognition = () => {
     checkHealth,
     isProcessing,
     trackedFaces,
+    scanningBboxes, // Bboxes for scanning overlay (unrecognized faces)
     error,
     clearError,
     clearFaces,

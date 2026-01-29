@@ -55,17 +55,27 @@ const AttendanceCapture = () => {
     checkHealth, 
     isProcessing, 
     trackedFaces, 
+    scanningBboxes,
     clearFaces,
     pruneStalefaces 
   } = useFaceRecognition();
 
-  // Convert TrackedFace to FaceOverlayData
+  // Convert TrackedFace to FaceOverlayData (only recognized members)
   const facesForOverlay: FaceOverlayData[] = trackedFaces.map(face => ({
     bbox: face.bbox,
     name: face.name,
     attendanceStatus: face.attendanceStatus,
     confidence: face.confidence,
   }));
+
+  // Add scanning overlay bboxes for unrecognized faces (no attendance entry)
+  const scanningFacesForOverlay: FaceOverlayData[] = scanningBboxes.map(bbox => ({
+    bbox,
+    attendanceStatus: 'detecting' as const,
+  }));
+
+  // Combined overlay: recognized faces + scanning bboxes
+  const allFacesForOverlay = [...facesForOverlay, ...scanningFacesForOverlay];
 
   // Check API health on mount
   useEffect(() => {
@@ -160,19 +170,20 @@ const AttendanceCapture = () => {
       const result = await recognizeFace(base64Image, profile?.organization_id);
 
       if (result.success && result.faces.length > 0) {
-        // Check if we should pause (confirmed or visitor detected)
+        // Check if we should pause (confirmed attendance)
         if (result.shouldPause) {
           pausedUntilRef.current = Date.now() + PAUSE_DURATION_MS;
         }
 
-        // Process each face for history and stats
+        // Process each recognized face for history and stats
+        // Only members create attendance entries now
         for (const face of result.faces) {
           // Skip faces that are still detecting
           if (face.attendanceStatus === 'detecting') continue;
           
           const person: RecognizedPerson = {
             id: face.id,
-            type: face.type,
+            type: 'member', // Only members now
             name: face.name,
             confidence: face.confidence,
             timestamp: new Date(),
@@ -188,11 +199,11 @@ const AttendanceCapture = () => {
           if (!exists) {
             setRecognizedPersons(prev => [person, ...prev.slice(0, 19)]);
             
-            // Update stats
+            // Update stats - only members now
             setStats(prev => ({
               total: prev.total + 1,
-              members: person.type === 'member' ? prev.members + 1 : prev.members,
-              visitors: person.type === 'visitor' ? prev.visitors + 1 : prev.visitors,
+              members: prev.members + 1,
+              visitors: prev.visitors, // No longer incremented
             }));
             
             if (soundEnabled) {
@@ -200,10 +211,10 @@ const AttendanceCapture = () => {
               audio.play().catch(() => {});
             }
 
-            const isNewAttendance = face.backendStatus === 'marked' || face.backendStatus === 'recorded';
+            const isNewAttendance = face.backendStatus === 'marked';
             
             toast({
-              title: person.type === 'member' ? 'Member Recognized' : 'Visitor Detected',
+              title: 'Member Recognized',
               description: `${person.name || 'Unknown'} - ${isNewAttendance ? 'Attendance marked' : 'Already recorded'}`,
               variant: isNewAttendance ? 'default' : undefined,
             });
@@ -468,10 +479,10 @@ const AttendanceCapture = () => {
               {/* Hidden canvas for frame capture */}
               <canvas ref={canvasRef} className="hidden" />
               
-              {/* Face detection overlay */}
-              {isCameraOn && facesForOverlay.length > 0 && (
+              {/* Face detection overlay - includes recognized faces + scanning bboxes */}
+              {isCameraOn && allFacesForOverlay.length > 0 && (
                 <FaceOverlay
-                  faces={facesForOverlay}
+                  faces={allFacesForOverlay}
                   videoWidth={videoDimensions.width}
                   videoHeight={videoDimensions.height}
                   containerWidth={containerDimensions.width}
