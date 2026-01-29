@@ -35,7 +35,7 @@ const NotificationBell = ({ userId }: NotificationBellProps) => {
     if (userId) {
       fetchNotifications();
       
-      // Subscribe to realtime notifications
+      // Subscribe to realtime notifications with error handling
       const channel = supabase
         .channel('notifications')
         .on(
@@ -51,7 +51,11 @@ const NotificationBell = ({ userId }: NotificationBellProps) => {
             setUnreadCount((prev) => prev + 1);
           }
         )
-        .subscribe();
+        .subscribe((status, err) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn('Notification realtime subscription error:', err?.message || status);
+          }
+        });
 
       return () => {
         supabase.removeChannel(channel);
