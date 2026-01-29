@@ -35,7 +35,6 @@ const DETECTION_COLORS = [
 ];
 
 const SUCCESS_COLOR = 'hsl(142, 76%, 45%)'; // Green for confirmed
-const VISITOR_COLOR = 'hsl(45, 93%, 47%)'; // Amber for visitors
 
 /**
  * Converts cvzone.cornerRect bounding box format [x1, y1, x2, y2] to position/size
@@ -153,16 +152,11 @@ const FaceOverlay = ({ faces, videoWidth, videoHeight, containerWidth, container
 
         const status = face.attendanceStatus;
 
-        // Check for success states: marked, recorded, already_marked, or confirmed
+        // Check for success states: confirmed (recognized member with attendance)
         if (status === 'confirmed') {
           currentColor = SUCCESS_COLOR;
           showGlow = true;
           labelText = face.name || 'Confirmed';
-          showLabel = true;
-        } else if (status === 'visitor') {
-          currentColor = VISITOR_COLOR;
-          showGlow = true;
-          labelText = 'Visitor';
           showLabel = true;
         } else {
           // Detecting or undefined - use animated colors, no glow
