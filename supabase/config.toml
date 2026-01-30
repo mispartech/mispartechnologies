@@ -3,6 +3,9 @@ project_id = "sdyichnqroitptxloyyl"
 [functions.face-recognition]
 verify_jwt = false
 
+[functions.face-enroll]
+verify_jwt = true
+
 [functions.send-member-invite]
 verify_jwt = true
 
