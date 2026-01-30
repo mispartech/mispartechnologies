@@ -18,19 +18,32 @@ export const useFaceEnrollmentGuard = (userId: string | undefined): UseEnrollmen
     }
 
     try {
-      const { data, error } = await supabase
-        .from('face_embeddings')
-        .select('id')
-        .eq('user_id', userId)
-        .maybeSingle();
+      // Check both face_embeddings table AND profiles.face_image_url
+      const [embeddingResult, profileResult] = await Promise.all([
+        supabase
+          .from('face_embeddings')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle(),
+        supabase
+          .from('profiles')
+          .select('face_image_url')
+          .eq('id', userId)
+          .maybeSingle()
+      ]);
 
-      if (error) {
-        console.error('Error checking face enrollment:', error);
-        // If error, assume not enrolled to be safe
-        setIsEnrolled(false);
-      } else {
-        setIsEnrolled(!!data);
+      if (embeddingResult.error) {
+        console.error('Error checking face embeddings:', embeddingResult.error);
       }
+      if (profileResult.error) {
+        console.error('Error checking profile face image:', profileResult.error);
+      }
+
+      // User is enrolled if they have either a face embedding OR a face_image_url
+      const hasEmbedding = !!embeddingResult.data;
+      const hasFaceImage = !!profileResult.data?.face_image_url;
+      
+      setIsEnrolled(hasEmbedding || hasFaceImage);
     } catch (err) {
       console.error('Face enrollment check failed:', err);
       setIsEnrolled(false);
