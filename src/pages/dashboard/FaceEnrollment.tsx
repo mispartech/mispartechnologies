@@ -4,8 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Camera, RefreshCw, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Camera, RefreshCw, CheckCircle2, AlertCircle, Loader2, Upload, Image as ImageIcon } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface DashboardContext {
   user: any;
@@ -21,6 +22,7 @@ const FaceEnrollment = () => {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   const [cameraActive, setCameraActive] = useState(false);
@@ -29,6 +31,7 @@ const FaceEnrollment = () => {
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollmentError, setEnrollmentError] = useState<string | null>(null);
   const [enrollmentSuccess, setEnrollmentSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState<'camera' | 'upload'>('camera');
 
   // Start camera
   const startCamera = useCallback(async () => {
@@ -87,12 +90,49 @@ const FaceEnrollment = () => {
     stopCamera();
   }, [stopCamera]);
 
+  // Handle file upload
+  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setEnrollmentError('Please select a valid image file (JPEG, PNG, etc.)');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setEnrollmentError('Image size must be less than 5MB');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setCapturedImage(result);
+      setEnrollmentError(null);
+      stopCamera();
+    };
+    reader.onerror = () => {
+      setEnrollmentError('Failed to read the image file. Please try again.');
+    };
+    reader.readAsDataURL(file);
+  }, [stopCamera]);
+
+  // Trigger file input click
+  const triggerFileUpload = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
   // Retake photo
   const retakePhoto = useCallback(() => {
     setCapturedImage(null);
     setEnrollmentError(null);
-    startCamera();
-  }, [startCamera]);
+    if (activeTab === 'camera') {
+      startCamera();
+    }
+  }, [startCamera, activeTab]);
 
   // Submit face enrollment
   const submitEnrollment = async () => {
@@ -139,11 +179,26 @@ const FaceEnrollment = () => {
     }
   };
 
-  // Start camera on mount
+  // Handle tab change
+  const handleTabChange = (value: string) => {
+    setActiveTab(value as 'camera' | 'upload');
+    setCapturedImage(null);
+    setEnrollmentError(null);
+    
+    if (value === 'camera') {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+  };
+
+  // Start camera on mount if camera tab is active
   useEffect(() => {
-    startCamera();
+    if (activeTab === 'camera') {
+      startCamera();
+    }
     return () => stopCamera();
-  }, [startCamera, stopCamera]);
+  }, []);
 
   // If already enrolled, redirect
   useEffect(() => {
@@ -191,46 +246,95 @@ const FaceEnrollment = () => {
           </CardTitle>
           <CardDescription>
             To use the attendance system, you need to enroll your face. 
-            Please position your face clearly in the camera and take a photo.
+            You can either capture a photo using your camera or upload an existing image.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Camera/Preview Area */}
-          <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-            {!capturedImage ? (
-              <>
-                <video
-                  ref={videoRef}
-                  className="w-full h-full object-cover"
-                  autoPlay
-                  playsInline
-                  muted
-                />
-                {cameraError && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                    <div className="text-center p-4">
-                      <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-2" />
-                      <p className="text-destructive">{cameraError}</p>
-                      <Button onClick={startCamera} className="mt-4">
-                        Retry Camera
-                      </Button>
-                    </div>
-                  </div>
+          {/* Tab Selection */}
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="camera" className="flex items-center gap-2">
+                <Camera className="h-4 w-4" />
+                Camera
+              </TabsTrigger>
+              <TabsTrigger value="upload" className="flex items-center gap-2">
+                <Upload className="h-4 w-4" />
+                Upload Photo
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Camera Tab */}
+            <TabsContent value="camera" className="mt-4">
+              <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
+                {!capturedImage ? (
+                  <>
+                    <video
+                      ref={videoRef}
+                      className="w-full h-full object-cover"
+                      autoPlay
+                      playsInline
+                      muted
+                    />
+                    {cameraError && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-muted">
+                        <div className="text-center p-4">
+                          <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-2" />
+                          <p className="text-destructive">{cameraError}</p>
+                          <Button onClick={startCamera} className="mt-4">
+                            Retry Camera
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {!cameraActive && !cameraError && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <img 
+                    src={capturedImage} 
+                    alt="Captured face" 
+                    className="w-full h-full object-cover"
+                  />
                 )}
-                {!cameraActive && !cameraError && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            </TabsContent>
+
+            {/* Upload Tab */}
+            <TabsContent value="upload" className="mt-4">
+              <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
+                {!capturedImage ? (
+                  <div 
+                    className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-muted/80 transition-colors"
+                    onClick={triggerFileUpload}
+                  >
+                    <ImageIcon className="h-16 w-16 text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground text-center px-4">
+                      Click to select an image or drag and drop
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Supported formats: JPEG, PNG (max 5MB)
+                    </p>
                   </div>
+                ) : (
+                  <img 
+                    src={capturedImage} 
+                    alt="Uploaded face" 
+                    className="w-full h-full object-cover"
+                  />
                 )}
-              </>
-            ) : (
-              <img 
-                src={capturedImage} 
-                alt="Captured face" 
-                className="w-full h-full object-cover"
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleFileUpload}
+                className="hidden"
               />
-            )}
-          </div>
+            </TabsContent>
+          </Tabs>
 
           {/* Hidden canvas for capture */}
           <canvas ref={canvasRef} className="hidden" />
@@ -258,14 +362,24 @@ const FaceEnrollment = () => {
           {/* Action Buttons */}
           <div className="flex gap-4 justify-center">
             {!capturedImage ? (
-              <Button 
-                size="lg" 
-                onClick={captureImage}
-                disabled={!cameraActive}
-              >
-                <Camera className="h-5 w-5 mr-2" />
-                Capture Photo
-              </Button>
+              activeTab === 'camera' ? (
+                <Button 
+                  size="lg" 
+                  onClick={captureImage}
+                  disabled={!cameraActive}
+                >
+                  <Camera className="h-5 w-5 mr-2" />
+                  Capture Photo
+                </Button>
+              ) : (
+                <Button 
+                  size="lg" 
+                  onClick={triggerFileUpload}
+                >
+                  <Upload className="h-5 w-5 mr-2" />
+                  Select Image
+                </Button>
+              )
             ) : (
               <>
                 <Button 
@@ -275,7 +389,7 @@ const FaceEnrollment = () => {
                   disabled={isEnrolling}
                 >
                   <RefreshCw className="h-5 w-5 mr-2" />
-                  Retake
+                  {activeTab === 'camera' ? 'Retake' : 'Choose Another'}
                 </Button>
                 <Button 
                   size="lg" 
