@@ -5,6 +5,7 @@ import { User, Session } from '@supabase/supabase-js';
 import DashboardSidebar from './DashboardSidebar';
 import DashboardHeader from './DashboardHeader';
 import { TerminologyProvider } from '@/contexts/TerminologyContext';
+import { useFaceEnrollmentGuard } from '@/hooks/useFaceEnrollmentGuard';
 
 const DashboardLayout = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -14,6 +15,9 @@ const DashboardLayout = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Check face enrollment status
+  const { isEnrolled, isLoading: enrollmentLoading } = useFaceEnrollmentGuard(user?.id);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -56,7 +60,14 @@ const DashboardLayout = () => {
     }
   };
 
-  if (loading) {
+  // Redirect to enrollment if not enrolled (but not if already on enrollment page)
+  useEffect(() => {
+    if (!enrollmentLoading && isEnrolled === false && location.pathname !== '/dashboard/face-enrollment') {
+      navigate('/dashboard/face-enrollment');
+    }
+  }, [isEnrolled, enrollmentLoading, location.pathname, navigate]);
+
+  if (loading || enrollmentLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -66,6 +77,24 @@ const DashboardLayout = () => {
 
   if (!user) {
     return null;
+  }
+
+  // If on enrollment page, render simplified layout
+  if (location.pathname === '/dashboard/face-enrollment') {
+    return (
+      <TerminologyProvider organizationId={profile?.organization_id}>
+        <div className="min-h-screen bg-muted/30">
+          <DashboardHeader 
+            user={user} 
+            profile={profile}
+            onMenuToggle={() => {}}
+          />
+          <main className="p-4 lg:p-6 mt-16">
+            <Outlet context={{ user, profile, session }} />
+          </main>
+        </div>
+      </TerminologyProvider>
+    );
   }
 
   return (

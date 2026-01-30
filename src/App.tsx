@@ -25,6 +25,7 @@ import AdminManagement from "./pages/dashboard/AdminManagement";
 import ActivityLogs from "./pages/dashboard/ActivityLogs";
 import ScheduleManagement from "./pages/dashboard/ScheduleManagement";
 import SiteManagement from "./pages/dashboard/SiteManagement";
+import FaceEnrollment from "./pages/dashboard/FaceEnrollment";
 import PageWrapper from "./components/PageWrapper";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => (
             {/* Dashboard Routes */}
             <Route path="/dashboard" element={<DashboardLayout />}>
               <Route index element={<DashboardRouter />} />
+              <Route path="face-enrollment" element={<FaceEnrollment />} />
               <Route path="members" element={<MembersList />} />
               <Route path="temp-members" element={<TempMembersList />} />
               <Route path="attendance" element={<AttendanceCapture />} />
