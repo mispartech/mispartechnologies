@@ -1,57 +1,73 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-// Backend response codes
-type ResponseCode = 
-  | 'NO_FACE' 
-  | 'FACE_UNSTABLE' 
-  | 'FACES_DETECTED'
-  | 'FACE_RECOGNIZED' 
-  | 'TEMP_USER' 
-  | 'ALREADY_MARKED'
-  | 'ERROR';
+/**
+ * Backend response types - matches Django API contract
+ */
+type ResponseType = 'KNOWN' | 'TEMP' | null;
 
-// Attendance status for each face
-// 'detecting' = scanning animation, 'confirmed' = recognized member with attendance
+/**
+ * Attendance status for UI display
+ * 'detecting' = scanning animation (face seen but not yet processed)
+ * 'confirmed' = recognized member with attendance marked by backend
+ */
 export type AttendanceStatus = 'detecting' | 'confirmed';
 
 export interface TrackedFace {
-  id: string; // user_id for recognized members only
+  id: string; // user_id for KNOWN users, temp_user_id for TEMP users
   name: string;
-  type: 'member'; // Only members create attendance - no visitors
+  type: 'member' | 'visitor';
   confidence: number | null;
   bbox: number[];
   attendanceStatus: AttendanceStatus;
-  backendStatus?: string; // 'marked' | 'already_marked' | 'error'
-  lastSeen: number; // timestamp
+  attendanceMarked?: boolean; // From backend
+  requiresClaim?: boolean; // For temp users
+  lastSeen: number;
 }
 
-interface RawFace {
+/**
+ * Django API response format (new contract)
+ */
+interface DjangoResponse {
+  success: boolean;
+  code?: string;
+  type?: ResponseType;
+  user_id?: string;
+  temp_user_id?: string;
+  confidence?: number;
+  attendance_marked?: boolean;
+  requires_claim?: boolean;
+  name?: string;
+  bbox?: number[];
+  faces?: LegacyFace[]; // Legacy format support
+  faces_count?: number;
+  message?: string;
+  error?: string;
+  timestamp?: string;
+}
+
+/**
+ * Legacy face format from older Django responses
+ */
+interface LegacyFace {
   name?: string;
   recognized?: boolean;
   confidence?: number | null;
   bbox?: number[];
   user_id?: string;
+  temp_user_id?: string;
   temp_face_id?: string;
   type?: 'member' | 'visitor';
   attendance_status?: string;
-}
-
-interface RecognitionResult {
-  success: boolean;
-  code?: ResponseCode;
-  faces?: RawFace[];
-  faces_count?: number;
-  timestamp?: string;
-  error?: string;
 }
 
 interface RegistrationResult {
   success: boolean;
   user_id?: string;
   message?: string;
-  embedding_size?: number;
+  embedding_saved?: boolean;
   error?: string;
+  code?: string;
 }
 
 interface HealthCheckResult {
@@ -67,171 +83,81 @@ interface HealthCheckResult {
 const FACE_TIMEOUT_MS = 3000;
 
 /**
- * Safely parse a raw face object from the backend
- * Returns null if the face is invalid, unrecognized, or unstable
- * ONLY returns TrackedFace for recognized members (recognized === true)
+ * Parse Django response into TrackedFace array
+ * Supports both new single-face format and legacy faces array
  */
-const parseRawFace = (raw: unknown, index: number): TrackedFace | null => {
-  if (!raw || typeof raw !== 'object') {
-    return null;
-  }
-
-  const face = raw as RawFace & { recognized?: boolean; user_type?: string; unstable?: boolean };
-
-  // CRITICAL: Only process recognized faces with a valid user_id
-  // Unrecognized, unknown, or unstable faces should NOT create attendance entries
-  if (!face.recognized || !face.user_id) {
-    // Return null - this face should only show scanning overlay, not attendance entry
-    return null;
-  }
-
-  // Validate bbox - must be array with at least 4 numbers
-  if (!face.bbox || !Array.isArray(face.bbox) || face.bbox.length < 4) {
-    return null;
-  }
-
-  // Validate bbox values are numbers
-  const bboxValid = face.bbox.slice(0, 4).every(v => typeof v === 'number' && !isNaN(v));
-  if (!bboxValid) {
-    return null;
-  }
-
-  // Determine attendance status based on backend response
-  let attendanceStatus: AttendanceStatus = 'detecting';
-  if (face.attendance_status === 'marked' || face.attendance_status === 'already_marked') {
-    attendanceStatus = 'confirmed';
-  }
-
-  return {
-    id: face.user_id,
-    name: face.name || 'Unknown Member',
-    type: 'member',
-    confidence: typeof face.confidence === 'number' ? face.confidence : null,
-    bbox: face.bbox.slice(0, 4),
-    attendanceStatus,
-    backendStatus: face.attendance_status,
-    lastSeen: Date.now(),
-  };
-};
-
-/**
- * Extract bbox data for scanning overlay from unrecognized faces
- * Returns bbox arrays for faces that should show scanning animation only
- */
-const extractScanningBboxes = (faces: unknown[]): number[][] => {
-  const bboxes: number[][] = [];
-  
-  for (const raw of faces) {
-    if (!raw || typeof raw !== 'object') continue;
-    
-    const face = raw as RawFace & { recognized?: boolean };
-    
-    // Only extract bbox for unrecognized faces (for scanning overlay)
-    if (face.recognized === true) continue; // Skip recognized - handled by parseRawFace
-    
-    if (face.bbox && Array.isArray(face.bbox) && face.bbox.length >= 4) {
-      const bboxValid = face.bbox.slice(0, 4).every(v => typeof v === 'number' && !isNaN(v));
-      if (bboxValid) {
-        bboxes.push(face.bbox.slice(0, 4));
-      }
-    }
-  }
-  
-  return bboxes;
-};
-
-/**
- * Interpret backend response code and determine how to update face state
- * Only creates TrackedFace entries for recognized members
- * Unrecognized/unstable faces return scanning bboxes for overlay only
- */
-const interpretResponseCode = (result: RecognitionResult): {
-  shouldClearFaces: boolean;
-  shouldKeepDetecting: boolean;
+const parseDjangoResponse = (response: DjangoResponse): {
   faces: TrackedFace[];
-  scanningBboxes: number[][]; // Bboxes for scanning overlay (unrecognized faces)
+  scanningBboxes: number[][];
 } => {
-  const code = result.code;
-  
-  // Parse recognized faces only (creates attendance entries)
-  const parsedFaces: TrackedFace[] = [];
-  // Extract bboxes for scanning overlay (unrecognized/unstable faces)
-  let scanningBboxes: number[][] = [];
-  
-  if (result.faces && Array.isArray(result.faces)) {
-    for (let i = 0; i < result.faces.length; i++) {
-      const parsed = parseRawFace(result.faces[i], i);
-      if (parsed) {
-        parsedFaces.push(parsed);
-      }
+  const faces: TrackedFace[] = [];
+  const scanningBboxes: number[][] = [];
+  const now = Date.now();
+
+  // Handle new format: single face in response root
+  if (response.type === 'KNOWN' && response.user_id) {
+    faces.push({
+      id: response.user_id,
+      name: response.name || 'Member',
+      type: 'member',
+      confidence: response.confidence || null,
+      bbox: response.bbox || [],
+      attendanceStatus: response.attendance_marked ? 'confirmed' : 'detecting',
+      attendanceMarked: response.attendance_marked,
+      lastSeen: now,
+    });
+  } else if (response.type === 'TEMP' && response.temp_user_id) {
+    // Temp users only show scanning overlay - no attendance entry
+    if (response.bbox && response.bbox.length >= 4) {
+      scanningBboxes.push(response.bbox);
     }
-    // Get bboxes for unrecognized faces (scanning overlay only)
-    scanningBboxes = extractScanningBboxes(result.faces);
   }
 
-  switch (code) {
-    case 'NO_FACE':
-      return { shouldClearFaces: true, shouldKeepDetecting: false, faces: [], scanningBboxes: [] };
-    
-    case 'FACE_UNSTABLE':
-    case 'FACES_DETECTED':
-      // Face detected but not recognized - show scanning overlay only
-      // Do NOT create attendance entries for unstable/unrecognized faces
-      return { 
-        shouldClearFaces: false, 
-        shouldKeepDetecting: true, 
-        faces: parsedFaces, // Only recognized faces
-        scanningBboxes, // Unrecognized faces for scanning overlay
-      };
-    
-    case 'FACE_RECOGNIZED':
-      return { 
-        shouldClearFaces: false, 
-        shouldKeepDetecting: false, 
-        faces: parsedFaces.map(f => ({ ...f, attendanceStatus: 'confirmed' as AttendanceStatus })),
-        scanningBboxes: [],
-      };
-    
-    case 'ALREADY_MARKED':
-      return { 
-        shouldClearFaces: false, 
-        shouldKeepDetecting: false, 
-        faces: parsedFaces.map(f => ({ ...f, attendanceStatus: 'confirmed' as AttendanceStatus })),
-        scanningBboxes: [],
-      };
-    
-    // TEMP_USER is disabled - do not create visitor entries
-    case 'TEMP_USER':
-      // Ignore temp users - just show scanning overlay
-      return { 
-        shouldClearFaces: false, 
-        shouldKeepDetecting: true, 
-        faces: [], // No attendance entry
-        scanningBboxes,
-      };
-    
-    default:
-      // Legacy handling - only process recognized faces
-      if (parsedFaces.length > 0) {
-        return { shouldClearFaces: false, shouldKeepDetecting: false, faces: parsedFaces, scanningBboxes: [] };
+  // Handle legacy format: faces array
+  if (response.faces && Array.isArray(response.faces)) {
+    for (const face of response.faces) {
+      // Only create TrackedFace for recognized members
+      if (face.recognized && face.user_id) {
+        const bbox = face.bbox || [];
+        if (bbox.length >= 4 && bbox.every(v => typeof v === 'number')) {
+          faces.push({
+            id: face.user_id,
+            name: face.name || 'Member',
+            type: 'member',
+            confidence: face.confidence || null,
+            bbox: bbox.slice(0, 4),
+            attendanceStatus: face.attendance_status === 'marked' || face.attendance_status === 'already_marked' 
+              ? 'confirmed' 
+              : 'detecting',
+            attendanceMarked: face.attendance_status === 'marked' || face.attendance_status === 'already_marked',
+            lastSeen: now,
+          });
+        }
+      } else {
+        // Unrecognized face - add to scanning overlay only
+        const bbox = face.bbox || [];
+        if (bbox.length >= 4 && bbox.every(v => typeof v === 'number')) {
+          scanningBboxes.push(bbox.slice(0, 4));
+        }
       }
-      return { shouldClearFaces: false, shouldKeepDetecting: true, faces: [], scanningBboxes };
+    }
   }
+
+  return { faces, scanningBboxes };
 };
 
 export const useFaceRecognition = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Tracked faces = only recognized members with attendance entries
+  // Tracked faces = only recognized members (from backend)
   const [trackedFaces, setTrackedFaces] = useState<TrackedFace[]>([]);
-  // Scanning bboxes = unrecognized/unstable faces (overlay only, no attendance)
+  // Scanning bboxes = unrecognized faces (overlay only)
   const [scanningBboxes, setScanningBboxes] = useState<number[][]>([]);
   const lastUpdateRef = useRef<number>(Date.now());
 
   /**
-   * Check if capture should be paused based on current face state
-   * Only pause for confirmed attendance (not for scanning)
+   * Check if capture should be paused based on confirmed attendance
    */
   const shouldPauseCapture = useCallback((): boolean => {
     return trackedFaces.some(face => face.attendanceStatus === 'confirmed');
@@ -247,7 +173,7 @@ export const useFaceRecognition = () => {
   }, []);
 
   /**
-   * Check for stale faces and remove them
+   * Remove stale faces not seen recently
    */
   const pruneStalefaces = useCallback(() => {
     const now = Date.now();
@@ -256,6 +182,10 @@ export const useFaceRecognition = () => {
     );
   }, []);
 
+  /**
+   * Send frame to Django for recognition - NO local processing
+   * Frontend trusts backend response completely
+   */
   const recognizeFace = useCallback(async (
     imageBase64: string, 
     organizationId?: string
@@ -274,6 +204,7 @@ export const useFaceRecognition = () => {
         body: {
           action: 'recognize',
           image: imageBase64,
+          mode: 'RECOGNIZE',
           organization_id: organizationId,
         },
       });
@@ -282,10 +213,10 @@ export const useFaceRecognition = () => {
         throw new Error(fnError.message);
       }
 
-      const result = data as RecognitionResult;
+      const response = data as DjangoResponse;
       
-      if (!result.success) {
-        const msg = result.error || 'Recognition failed';
+      if (!response.success) {
+        const msg = response.error || response.message || 'Recognition failed';
         setError(msg);
         return { 
           success: false, 
@@ -296,37 +227,30 @@ export const useFaceRecognition = () => {
         };
       }
 
-      // Interpret response - only recognized faces become TrackedFaces
-      // Unrecognized faces only provide bboxes for scanning overlay
-      const { 
-        shouldClearFaces, 
-        shouldKeepDetecting, 
-        faces: newFaces,
-        scanningBboxes: newScanningBboxes 
-      } = interpretResponseCode(result);
-      
-      if (shouldClearFaces) {
+      // Parse backend response - trust it completely
+      const { faces: newFaces, scanningBboxes: newScanningBboxes } = parseDjangoResponse(response);
+
+      // Update state based on backend response
+      if (response.code === 'NO_FACE') {
         setTrackedFaces([]);
         setScanningBboxes([]);
         return { success: true, faces: [], scanningBboxes: [], shouldPause: false };
       }
 
-      // Update scanning bboxes for unrecognized faces (overlay only)
       setScanningBboxes(newScanningBboxes);
 
       if (newFaces.length > 0) {
-        // Only recognized members create attendance entries
         setTrackedFaces(newFaces);
         lastUpdateRef.current = Date.now();
         
-        // Only pause for confirmed attendance
-        const shouldPause = newFaces.some(f => f.attendanceStatus === 'confirmed');
+        // Pause only for confirmed attendance (backend marked it)
+        const shouldPause = newFaces.some(f => f.attendanceMarked);
         
         return { success: true, faces: newFaces, scanningBboxes: newScanningBboxes, shouldPause };
       }
 
-      // No recognized faces - keep scanning overlay active if detecting
-      if (shouldKeepDetecting) {
+      // Faces detected but not recognized - show scanning overlay
+      if (newScanningBboxes.length > 0) {
         return { success: true, faces: [], scanningBboxes: newScanningBboxes, shouldPause: false };
       }
 
@@ -342,6 +266,9 @@ export const useFaceRecognition = () => {
     }
   }, [trackedFaces, scanningBboxes]);
 
+  /**
+   * Register/enroll face via Django - NO local DB writes
+   */
   const registerFace = useCallback(async (
     imageBase64: string,
     userData: { user_id: string; name: string }
@@ -352,8 +279,9 @@ export const useFaceRecognition = () => {
     try {
       const { data, error: fnError } = await supabase.functions.invoke('face-recognition', {
         body: {
-          action: 'register',
+          action: 'enroll',
           image: imageBase64,
+          mode: 'ENROLL',
           user_data: userData,
         },
       });
@@ -363,23 +291,36 @@ export const useFaceRecognition = () => {
       }
 
       const result = data as RegistrationResult;
+      
       if (!result.success) {
         const msg = result.error || 'Registration failed';
         setError(msg);
+        
+        // Handle duplicate face error
+        if (result.code === 'DUPLICATE_FACE' || result.error === 'duplicate_face') {
+          return {
+            success: false,
+            error: 'duplicate_face',
+            code: 'DUPLICATE_FACE',
+            message: result.message || 'This face is already enrolled for another user.',
+          };
+        }
       }
+      
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Registration failed';
       setError(errorMessage);
-      if (process.env.NODE_ENV === 'development') {
-        console.error('[useFaceRecognition] Registration error:', err);
-      }
+      console.error('[useFaceRecognition] Registration error:', err);
       return null;
     } finally {
       setIsProcessing(false);
     }
   }, []);
 
+  /**
+   * Health check for Django API connection
+   */
   const checkHealth = useCallback(async (): Promise<HealthCheckResult | null> => {
     try {
       const { data, error: fnError } = await supabase.functions.invoke('face-recognition', {
@@ -393,9 +334,7 @@ export const useFaceRecognition = () => {
       return data as HealthCheckResult;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Health check failed';
-      if (process.env.NODE_ENV === 'development') {
-        console.error('[useFaceRecognition] Health check error:', err);
-      }
+      console.error('[useFaceRecognition] Health check error:', err);
       return {
         success: false,
         django_api: 'unreachable',
@@ -416,7 +355,7 @@ export const useFaceRecognition = () => {
     checkHealth,
     isProcessing,
     trackedFaces,
-    scanningBboxes, // Bboxes for scanning overlay (unrecognized faces)
+    scanningBboxes,
     error,
     clearError,
     clearFaces,
