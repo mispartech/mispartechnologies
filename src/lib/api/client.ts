@@ -272,15 +272,33 @@ class DjangoApiClient {
 
   // ============ FACE ENDPOINTS ============
 
-  async enrollFace(userId: string, imageBase64: string, userName?: string): Promise<ApiResponse<{
-    success: boolean;
-    message: string;
+  /**
+   * Check if user has completed face enrollment
+   * Returns face_image_uploaded and face_embedding_status
+   */
+  async checkFaceEnrollmentStatus(userId: string): Promise<ApiResponse<{
+    face_image_uploaded: boolean;
+    face_embedding_status: 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED' | null;
   }>> {
-    return this.request('/api/face/enroll/', {
+    return this.request(`/api/face/enrollment-status/${userId}/`);
+  }
+
+  /**
+   * Enroll face using /api/recognize-frame/ in ENROLLMENT MODE
+   * This captures the face, saves embedding, and updates user record
+   */
+  async enrollFace(userId: string, imageBase64: string, userName?: string): Promise<ApiResponse<{
+    status: string;
+    embedding_saved: boolean;
+    message?: string;
+    face_image_url?: string;
+  }>> {
+    return this.request('/api/recognize-frame/', {
       method: 'POST',
       body: JSON.stringify({
-        user_id: userId,
         frame: imageBase64,
+        mode: 'ENROLLMENT',
+        user_id: userId,
         name: userName,
       }),
     });
