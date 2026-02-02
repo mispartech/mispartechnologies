@@ -1,64 +1,77 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect, useCallback } from 'react';
+import { djangoApi } from '@/lib/api/client';
 
 interface UseEnrollmentGuardResult {
   isEnrolled: boolean | null;
   isLoading: boolean;
+  enrollmentStatus: 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED' | null;
   refetch: () => Promise<void>;
 }
 
+/**
+ * Guard hook that checks if user has completed face enrollment via Django API.
+ * User is considered enrolled if:
+ * - face_image_uploaded === true AND
+ * - face_embedding_status === "READY"
+ */
 export const useFaceEnrollmentGuard = (userId: string | undefined): UseEnrollmentGuardResult => {
   const [isEnrolled, setIsEnrolled] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [enrollmentStatus, setEnrollmentStatus] = useState<'PENDING' | 'PROCESSING' | 'READY' | 'FAILED' | null>(null);
 
-  const checkEnrollment = async () => {
+  const checkEnrollment = useCallback(async () => {
     if (!userId) {
       setIsLoading(false);
+      setIsEnrolled(false);
       return;
     }
 
+    setIsLoading(true);
+
     try {
-      // Check both face_embeddings table AND profiles.face_image_url
-      const [embeddingResult, profileResult] = await Promise.all([
-        supabase
-          .from('face_embeddings')
-          .select('id')
-          .eq('user_id', userId)
-          .maybeSingle(),
-        supabase
-          .from('profiles')
-          .select('face_image_url')
-          .eq('id', userId)
-          .maybeSingle()
-      ]);
+      const result = await djangoApi.checkFaceEnrollmentStatus(userId);
 
-      if (embeddingResult.error) {
-        console.error('Error checking face embeddings:', embeddingResult.error);
+      if (result.error) {
+        console.error('Error checking face enrollment status:', result.error);
+        // On error, assume not enrolled to be safe
+        setIsEnrolled(false);
+        setEnrollmentStatus(null);
+      } else if (result.data) {
+        const { face_image_uploaded, face_embedding_status } = result.data;
+        
+        // User is enrolled ONLY if both conditions are met
+        const enrolled = face_image_uploaded === true && face_embedding_status === 'READY';
+        
+        setIsEnrolled(enrolled);
+        setEnrollmentStatus(face_embedding_status);
+        
+        console.log('[FaceEnrollmentGuard] Status:', {
+          face_image_uploaded,
+          face_embedding_status,
+          enrolled
+        });
+      } else {
+        // No data returned, assume not enrolled
+        setIsEnrolled(false);
+        setEnrollmentStatus(null);
       }
-      if (profileResult.error) {
-        console.error('Error checking profile face image:', profileResult.error);
-      }
-
-      // User is enrolled if they have either a face embedding OR a face_image_url
-      const hasEmbedding = !!embeddingResult.data;
-      const hasFaceImage = !!profileResult.data?.face_image_url;
-      
-      setIsEnrolled(hasEmbedding || hasFaceImage);
     } catch (err) {
       console.error('Face enrollment check failed:', err);
       setIsEnrolled(false);
+      setEnrollmentStatus(null);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [userId]);
 
   useEffect(() => {
     checkEnrollment();
-  }, [userId]);
+  }, [checkEnrollment]);
 
   return {
     isEnrolled,
     isLoading,
+    enrollmentStatus,
     refetch: checkEnrollment,
   };
 };
