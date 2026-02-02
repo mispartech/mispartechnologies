@@ -187,7 +187,7 @@ const AttendanceCapture = () => {
             name: face.name,
             confidence: face.confidence,
             timestamp: new Date(),
-            attendanceStatus: face.backendStatus,
+            attendanceStatus: face.attendanceMarked ? 'marked' : 'detecting',
           };
 
           // Check if already in recent history (within 30 seconds)
@@ -211,7 +211,7 @@ const AttendanceCapture = () => {
               audio.play().catch(() => {});
             }
 
-            const isNewAttendance = face.backendStatus === 'marked';
+            const isNewAttendance = face.attendanceMarked === true;
             
             toast({
               title: 'Member Recognized',

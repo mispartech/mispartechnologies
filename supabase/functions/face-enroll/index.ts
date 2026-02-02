@@ -1,11 +1,18 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/**
+ * Face Enrollment Edge Function - Pure Pass-Through Proxy
+ * 
+ * This function forwards enrollment requests to the Django backend.
+ * NO Supabase database writes - Django is the single source of truth for:
+ * - Face embeddings
+ * - Enrollment status
+ */
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -14,9 +21,6 @@ serve(async (req) => {
 
   try {
     const DJANGO_API_URL = Deno.env.get('DJANGO_API_URL');
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!DJANGO_API_URL) {
       console.error('DJANGO_API_URL is not configured');
@@ -36,26 +40,19 @@ serve(async (req) => {
       throw new Error('User ID is required');
     }
 
-    console.log(`Processing face enrollment for user: ${user_id}`);
+    console.log(`Forwarding face enrollment for user: ${user_id}`);
 
-    // Initialize Supabase client with service role for database operations
-    const supabase = createClient(
-      SUPABASE_URL!, 
-      SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY!
-    );
-
-    // Call Django API for face enrollment
-    console.log('Calling Django face enrollment API...');
-    
+    // Forward enrollment to Django API
     let response;
     try {
-      response = await fetch(`${DJANGO_API_URL}/api/face/enroll/`, {
+      response = await fetch(`${DJANGO_API_URL}/api/recognize-frame/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
           frame: image,
+          mode: 'ENROLL',
           user_id: user_id,
           name: user_name || 'User',
         }),
@@ -102,6 +99,7 @@ serve(async (req) => {
         return new Response(JSON.stringify({
           success: false,
           error: 'duplicate_face',
+          code: 'DUPLICATE_FACE',
           message: data.message || 'This face appears to be already enrolled for another user.',
           timestamp: new Date().toISOString(),
         }), {
@@ -112,6 +110,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         success: false,
         error: `Enrollment failed: ${response.status}`,
+        code: data.code || 'ERROR',
         message: data.message || data.error || 'Face enrollment failed',
         timestamp: new Date().toISOString(),
       }), {
@@ -119,41 +118,15 @@ serve(async (req) => {
       });
     }
 
-    // Successfully enrolled - update database
-    console.log('Face enrollment successful, updating database...');
-
-    // Upsert face_embeddings record to mark user as enrolled
-    const { error: embedError } = await supabase
-      .from('face_embeddings')
-      .upsert({
-        user_id: user_id,
-        embedding: { enrolled: true, enrolled_at: new Date().toISOString() },
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id',
-      });
-
-    if (embedError) {
-      console.error('Error updating face_embeddings:', embedError);
-      // Don't fail the request, enrollment was successful on Django side
-    } else {
-      console.log('Face embeddings record created/updated for user:', user_id);
-    }
-
-    // Update profile to mark enrollment complete
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', user_id);
-
-    if (profileError) {
-      console.error('Error updating profile:', profileError);
-    }
+    // Return successful enrollment response from Django
+    // NO local database updates - Django is source of truth
+    console.log('Face enrollment successful via Django');
 
     return new Response(JSON.stringify({
       success: true,
-      message: data.message || 'Face enrolled successfully',
       user_id: user_id,
+      embedding_saved: data.embedding_saved || data.status === 'success' || true,
+      message: data.message || 'Face enrolled successfully',
       timestamp: new Date().toISOString(),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -165,6 +138,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       success: false,
       error: errorMessage,
+      timestamp: new Date().toISOString(),
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
