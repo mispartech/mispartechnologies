@@ -4,7 +4,19 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Camera, CheckCircle2, AlertCircle, Loader2, Shield, Scan } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { 
+  Camera, 
+  CheckCircle2, 
+  AlertCircle, 
+  Loader2, 
+  Shield, 
+  Scan, 
+  Upload, 
+  ImageIcon,
+  Star,
+  Lightbulb
+} from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface DashboardContext {
@@ -14,6 +26,10 @@ interface DashboardContext {
 }
 
 type EnrollmentStep = 'IDLE' | 'CAPTURING' | 'PROCESSING' | 'VERIFIED' | 'FAILED';
+type EnrollmentMethod = 'upload' | 'camera';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const FaceEnrollment = () => {
   const context = useOutletContext<DashboardContext>();
@@ -23,11 +39,16 @@ const FaceEnrollment = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [method, setMethod] = useState<EnrollmentMethod>('upload');
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [enrollmentStep, setEnrollmentStep] = useState<EnrollmentStep>('IDLE');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Progress percentage for visual feedback
   const progressMap: Record<EnrollmentStep, number> = {
@@ -41,10 +62,67 @@ const FaceEnrollment = () => {
   // Step labels for display
   const stepLabels: Record<EnrollmentStep, string> = {
     IDLE: 'Ready to capture',
-    CAPTURING: 'Capturing...',
+    CAPTURING: method === 'upload' ? 'Reading image...' : 'Capturing...',
     PROCESSING: 'Processing face data...',
     VERIFIED: 'Face Verified!',
     FAILED: 'Enrollment failed',
+  };
+
+  // Handle file selection
+  const handleFileSelect = useCallback((file: File) => {
+    setErrorMessage(null);
+
+    // Validate file type
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      setErrorMessage('Please upload a JPG, PNG, or WebP image.');
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      setErrorMessage('Image must be less than 5MB.');
+      return;
+    }
+
+    // Read file as base64
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setUploadedImage(result);
+      setUploadedFileName(file.name);
+    };
+    reader.onerror = () => {
+      setErrorMessage('Failed to read image file.');
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  // Handle file input change
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileSelect(file);
+    }
+  };
+
+  // Handle drag events
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleFileSelect(file);
+    }
   };
 
   // Start camera
@@ -84,35 +162,8 @@ const FaceEnrollment = () => {
     setCameraActive(false);
   }, []);
 
-  // Capture and process face - uses edge function to avoid CORS
-  const captureAndEnroll = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current || !user?.id) return;
-
-    setEnrollmentStep('CAPTURING');
-    setErrorMessage(null);
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-
-    if (!context) {
-      setEnrollmentStep('FAILED');
-      setErrorMessage('Canvas context unavailable');
-      return;
-    }
-
-    // Capture frame
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const imageData = canvas.toDataURL('image/jpeg', 0.9);
-    const base64Image = imageData.replace(/^data:image\/\w+;base64,/, '');
-
-    // Stop camera after capture
-    stopCamera();
-
-    // Process with edge function (which forwards to Django)
+  // Process enrollment with base64 image
+  const processEnrollment = useCallback(async (base64Image: string) => {
     setEnrollmentStep('PROCESSING');
 
     try {
@@ -154,22 +205,84 @@ const FaceEnrollment = () => {
       console.error('Enrollment error:', err);
       setEnrollmentStep('FAILED');
       setErrorMessage(err.message || 'Failed to enroll face. Please try again.');
-      // Restart camera for retry
+    }
+  }, [user, profile, navigate]);
+
+  // Enroll with uploaded image
+  const enrollWithUpload = useCallback(async () => {
+    if (!uploadedImage || !user?.id) return;
+
+    setEnrollmentStep('CAPTURING');
+    setErrorMessage(null);
+
+    // Extract base64 data without the data URL prefix
+    const base64Image = uploadedImage.replace(/^data:image\/\w+;base64,/, '');
+    
+    await processEnrollment(base64Image);
+  }, [uploadedImage, user?.id, processEnrollment]);
+
+  // Capture and process face from camera
+  const captureAndEnroll = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current || !user?.id) return;
+
+    setEnrollmentStep('CAPTURING');
+    setErrorMessage(null);
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      setEnrollmentStep('FAILED');
+      setErrorMessage('Canvas context unavailable');
+      return;
+    }
+
+    // Capture frame
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageData = canvas.toDataURL('image/jpeg', 0.9);
+    const base64Image = imageData.replace(/^data:image\/\w+;base64,/, '');
+
+    // Stop camera after capture
+    stopCamera();
+
+    await processEnrollment(base64Image);
+  }, [user?.id, stopCamera, processEnrollment]);
+
+  // Handle retry
+  const handleRetry = () => {
+    setEnrollmentStep('IDLE');
+    setErrorMessage(null);
+    if (method === 'camera') {
       startCamera();
     }
-  }, [user, profile, stopCamera, startCamera, navigate]);
+  };
 
-  // Start camera on mount
+  // Handle method change
+  const handleMethodChange = (value: string) => {
+    setMethod(value as EnrollmentMethod);
+    setErrorMessage(null);
+    setEnrollmentStep('IDLE');
+    
+    if (value === 'camera') {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+  };
+
+  // Cleanup on unmount
   useEffect(() => {
-    startCamera();
     return () => stopCamera();
-  }, [startCamera, stopCamera]);
+  }, [stopCamera]);
 
   // Block back navigation
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
       e.preventDefault();
-      // Push current state back
       window.history.pushState(null, '', window.location.pathname);
     };
 
@@ -216,6 +329,15 @@ const FaceEnrollment = () => {
         </CardHeader>
       </Card>
 
+      {/* Recommendation Banner */}
+      <Alert className="border-primary/30 bg-primary/5">
+        <Lightbulb className="h-4 w-4 text-primary" />
+        <AlertDescription className="text-sm">
+          <strong>Recommended:</strong> Upload a clear photo of your face for best results. 
+          This ensures consistent quality regardless of your current lighting or camera conditions.
+        </AlertDescription>
+      </Alert>
+
       {/* Progress Indicator */}
       <Card>
         <CardContent className="pt-6">
@@ -227,7 +349,7 @@ const FaceEnrollment = () => {
             <Progress value={progressMap[enrollmentStep]} className="h-3" />
             <div className="flex justify-between text-xs text-muted-foreground">
               <span className={enrollmentStep === 'CAPTURING' ? 'text-primary font-medium' : ''}>
-                Capturing
+                {method === 'upload' ? 'Reading' : 'Capturing'}
               </span>
               <span className={enrollmentStep === 'PROCESSING' ? 'text-primary font-medium' : ''}>
                 Processing
@@ -240,65 +362,179 @@ const FaceEnrollment = () => {
         </CardContent>
       </Card>
 
-      {/* Camera View */}
+      {/* Method Selection & Input */}
       <Card>
         <CardContent className="pt-6 space-y-6">
-          {/* Camera Feed */}
-          <div className="relative aspect-video bg-muted rounded-lg overflow-hidden border-2 border-dashed border-border">
-            <video
-              ref={videoRef}
-              className="w-full h-full object-cover"
-              autoPlay
-              playsInline
-              muted
-            />
-            
-            {/* Face Guide Overlay */}
-            {cameraActive && enrollmentStep === 'IDLE' && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-48 h-60 border-4 border-primary/50 rounded-full" />
-              </div>
-            )}
+          <Tabs value={method} onValueChange={handleMethodChange} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="upload" className="gap-2">
+                <Upload className="h-4 w-4" />
+                Upload Photo
+                <span className="ml-1 text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
+                  Recommended
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="camera" className="gap-2">
+                <Camera className="h-4 w-4" />
+                Use Camera
+              </TabsTrigger>
+            </TabsList>
 
-            {/* Loading States */}
-            {enrollmentStep === 'CAPTURING' && (
-              <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center">
-                <Scan className="h-16 w-16 text-primary animate-pulse" />
-                <p className="mt-4 text-lg font-medium">Capturing face...</p>
+            {/* Upload Tab */}
+            <TabsContent value="upload" className="space-y-4 mt-4">
+              {/* Drop Zone */}
+              <div
+                className={`relative border-2 border-dashed rounded-lg transition-colors ${
+                  isDragging 
+                    ? 'border-primary bg-primary/5' 
+                    : uploadedImage 
+                      ? 'border-primary/50' 
+                      : 'border-border hover:border-primary/50'
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                {uploadedImage ? (
+                  <div className="relative aspect-video">
+                    <img 
+                      src={uploadedImage} 
+                      alt="Uploaded face" 
+                      className="w-full h-full object-contain rounded-lg"
+                    />
+                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+                      <span className="text-xs bg-background/80 backdrop-blur px-2 py-1 rounded">
+                        {uploadedFileName}
+                      </span>
+                      <Button 
+                        size="sm" 
+                        variant="secondary"
+                        onClick={() => {
+                          setUploadedImage(null);
+                          setUploadedFileName(null);
+                        }}
+                      >
+                        Change
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div 
+                    className="flex flex-col items-center justify-center py-12 cursor-pointer"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                      <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <p className="text-lg font-medium mb-1">Drop your photo here</p>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      or click to browse
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      JPG, PNG or WebP • Max 5MB
+                    </p>
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                />
               </div>
-            )}
 
-            {enrollmentStep === 'PROCESSING' && (
-              <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center">
-                <Loader2 className="h-16 w-16 text-primary animate-spin" />
-                <p className="mt-4 text-lg font-medium">Processing face data...</p>
-                <p className="text-sm text-muted-foreground">Please wait while we verify your face</p>
+              {/* Upload Tips */}
+              <div className="bg-muted/50 rounded-lg p-4">
+                <h4 className="font-medium mb-2 flex items-center gap-2">
+                  <Star className="h-4 w-4 text-primary" />
+                  Tips for best results:
+                </h4>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>• Use a clear, well-lit photo of your face</li>
+                  <li>• Face should be centered and clearly visible</li>
+                  <li>• Avoid blurry or low-resolution images</li>
+                  <li>• Remove glasses, hats, or face coverings</li>
+                  <li>• Use a neutral expression looking at the camera</li>
+                </ul>
               </div>
-            )}
+            </TabsContent>
 
-            {/* Camera Error */}
-            {cameraError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                <div className="text-center p-4">
-                  <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-2" />
-                  <p className="text-destructive font-medium">{cameraError}</p>
-                  <Button onClick={startCamera} className="mt-4">
-                    Retry Camera
-                  </Button>
-                </div>
+            {/* Camera Tab */}
+            <TabsContent value="camera" className="space-y-4 mt-4">
+              <div className="relative aspect-video bg-muted rounded-lg overflow-hidden border-2 border-dashed border-border">
+                <video
+                  ref={videoRef}
+                  className="w-full h-full object-cover"
+                  autoPlay
+                  playsInline
+                  muted
+                />
+                
+                {/* Face Guide Overlay */}
+                {cameraActive && enrollmentStep === 'IDLE' && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-48 h-60 border-4 border-primary/50 rounded-full" />
+                  </div>
+                )}
+
+                {/* Loading States */}
+                {enrollmentStep === 'CAPTURING' && method === 'camera' && (
+                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center">
+                    <Scan className="h-16 w-16 text-primary animate-pulse" />
+                    <p className="mt-4 text-lg font-medium">Capturing face...</p>
+                  </div>
+                )}
+
+                {/* Camera Error */}
+                {cameraError && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-muted">
+                    <div className="text-center p-4">
+                      <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-2" />
+                      <p className="text-destructive font-medium">{cameraError}</p>
+                      <Button onClick={startCamera} className="mt-4">
+                        Retry Camera
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Camera Loading */}
+                {!cameraActive && !cameraError && enrollmentStep === 'IDLE' && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Camera Loading */}
-            {!cameraActive && !cameraError && enrollmentStep === 'IDLE' && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              {/* Hidden canvas for capture */}
+              <canvas ref={canvasRef} className="hidden" />
+
+              {/* Camera Tips */}
+              <div className="bg-muted/50 rounded-lg p-4">
+                <h4 className="font-medium mb-2 flex items-center gap-2">
+                  <Camera className="h-4 w-4" />
+                  Tips for camera capture:
+                </h4>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>• Ensure your face is well-lit and clearly visible</li>
+                  <li>• Position your face within the oval guide</li>
+                  <li>• Look directly at the camera</li>
+                  <li>• Remove glasses, hats, or face coverings</li>
+                  <li>• Keep a neutral expression</li>
+                </ul>
               </div>
-            )}
-          </div>
+            </TabsContent>
+          </Tabs>
 
-          {/* Hidden canvas for capture */}
-          <canvas ref={canvasRef} className="hidden" />
+          {/* Processing Overlay */}
+          {enrollmentStep === 'PROCESSING' && (
+            <div className="flex flex-col items-center justify-center py-8">
+              <Loader2 className="h-16 w-16 text-primary animate-spin" />
+              <p className="mt-4 text-lg font-medium">Processing face data...</p>
+              <p className="text-sm text-muted-foreground">Please wait while we verify your face</p>
+            </div>
+          )}
 
           {/* Error Message */}
           {errorMessage && (
@@ -308,46 +544,52 @@ const FaceEnrollment = () => {
             </Alert>
           )}
 
-          {/* Tips */}
-          <div className="bg-muted/50 rounded-lg p-4">
-            <h4 className="font-medium mb-2 flex items-center gap-2">
-              <Camera className="h-4 w-4" />
-              Tips for a successful enrollment:
-            </h4>
-            <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Ensure your face is well-lit and clearly visible</li>
-              <li>• Position your face within the oval guide</li>
-              <li>• Look directly at the camera</li>
-              <li>• Remove glasses, hats, or face coverings</li>
-              <li>• Keep a neutral expression</li>
-            </ul>
-          </div>
-
-          {/* Capture Button */}
-          <div className="flex justify-center">
-            <Button 
-              size="lg" 
-              onClick={captureAndEnroll}
-              disabled={!cameraActive || enrollmentStep !== 'IDLE'}
-              className="min-w-48"
-            >
-              {enrollmentStep === 'IDLE' ? (
-                <>
-                  <Camera className="h-5 w-5 mr-2" />
-                  Capture & Enroll
-                </>
-              ) : enrollmentStep === 'FAILED' ? (
-                <>
-                  <Camera className="h-5 w-5 mr-2" />
-                  Try Again
-                </>
-              ) : (
-                <>
-                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                  {stepLabels[enrollmentStep]}
-                </>
-              )}
-            </Button>
+          {/* Action Buttons */}
+          <div className="flex justify-center gap-4">
+            {enrollmentStep === 'FAILED' ? (
+              <Button size="lg" onClick={handleRetry} className="min-w-48">
+                <Camera className="h-5 w-5 mr-2" />
+                Try Again
+              </Button>
+            ) : method === 'upload' ? (
+              <Button 
+                size="lg" 
+                onClick={enrollWithUpload}
+                disabled={!uploadedImage || enrollmentStep !== 'IDLE'}
+                className="min-w-48"
+              >
+                {enrollmentStep === 'IDLE' ? (
+                  <>
+                    <Upload className="h-5 w-5 mr-2" />
+                    Enroll with Photo
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                    {stepLabels[enrollmentStep]}
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button 
+                size="lg" 
+                onClick={captureAndEnroll}
+                disabled={!cameraActive || enrollmentStep !== 'IDLE'}
+                className="min-w-48"
+              >
+                {enrollmentStep === 'IDLE' ? (
+                  <>
+                    <Camera className="h-5 w-5 mr-2" />
+                    Capture & Enroll
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                    {stepLabels[enrollmentStep]}
+                  </>
+                )}
+              </Button>
+            )}
           </div>
 
           {/* Security Notice */}
