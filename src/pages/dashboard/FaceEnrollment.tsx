@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { djangoApi } from '@/lib/api/client';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -84,7 +84,7 @@ const FaceEnrollment = () => {
     setCameraActive(false);
   }, []);
 
-  // Capture and process face
+  // Capture and process face - uses edge function to avoid CORS
   const captureAndEnroll = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current || !user?.id) return;
 
@@ -112,19 +112,35 @@ const FaceEnrollment = () => {
     // Stop camera after capture
     stopCamera();
 
-    // Process with Django API
+    // Process with edge function (which forwards to Django)
     setEnrollmentStep('PROCESSING');
 
     try {
       const userName = `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim() || user.email;
       
-      const result = await djangoApi.enrollFace(user.id, base64Image, userName);
+      // Use edge function to enroll - avoids CORS, passes through to Django
+      const { data, error } = await supabase.functions.invoke('face-recognition', {
+        body: {
+          action: 'enroll',
+          image: base64Image,
+          user_data: {
+            user_id: user.id,
+            name: userName,
+          },
+        },
+      });
 
-      if (result.error) {
-        throw new Error(result.error);
+      if (error) {
+        throw new Error(error.message);
       }
 
-      if (result.data?.status === 'success' && result.data?.embedding_saved) {
+      // Handle duplicate face error from Django
+      if (data?.code === 'DUPLICATE_FACE' || data?.error === 'duplicate_face') {
+        throw new Error(data.message || 'This face appears to be already enrolled for another user.');
+      }
+
+      // Check for success - trust backend response completely
+      if (data?.success && data?.embedding_saved) {
         setEnrollmentStep('VERIFIED');
         
         // Navigate to dashboard after brief success display
@@ -132,7 +148,7 @@ const FaceEnrollment = () => {
           navigate('/dashboard');
         }, 2000);
       } else {
-        throw new Error(result.data?.message || 'Face enrollment failed. Please try again.');
+        throw new Error(data?.message || data?.error || 'Face enrollment failed. Please try again.');
       }
     } catch (err: any) {
       console.error('Enrollment error:', err);
