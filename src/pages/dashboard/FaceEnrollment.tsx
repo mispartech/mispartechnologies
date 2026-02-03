@@ -30,6 +30,52 @@ type EnrollmentMethod = 'upload' | 'camera';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_DIMENSION = 800; // Max width/height for compression
+const JPEG_QUALITY = 0.8;
+
+/**
+ * Compress an image to reduce file size for API upload.
+ * Resizes to max dimension and converts to JPEG.
+ */
+const compressImage = (imageSrc: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      
+      // Calculate new dimensions maintaining aspect ratio
+      if (width > height) {
+        if (width > MAX_IMAGE_DIMENSION) {
+          height = Math.round((height * MAX_IMAGE_DIMENSION) / width);
+          width = MAX_IMAGE_DIMENSION;
+        }
+      } else {
+        if (height > MAX_IMAGE_DIMENSION) {
+          width = Math.round((width * MAX_IMAGE_DIMENSION) / height);
+          height = MAX_IMAGE_DIMENSION;
+        }
+      }
+      
+      canvas.width = width;
+      canvas.height = height;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Could not get canvas context'));
+        return;
+      }
+      
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      // Convert to JPEG with compression
+      const compressedDataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+      resolve(compressedDataUrl);
+    };
+    img.onerror = () => reject(new Error('Failed to load image for compression'));
+    img.src = imageSrc;
+  });
+};
 
 const FaceEnrollment = () => {
   const context = useOutletContext<DashboardContext>();
@@ -215,10 +261,21 @@ const FaceEnrollment = () => {
     setEnrollmentStep('CAPTURING');
     setErrorMessage(null);
 
-    // Extract base64 data without the data URL prefix
-    const base64Image = uploadedImage.replace(/^data:image\/\w+;base64,/, '');
-    
-    await processEnrollment(base64Image);
+    try {
+      // Compress image before sending to avoid 413 errors
+      const compressedImage = await compressImage(uploadedImage);
+      
+      // Extract base64 data without the data URL prefix
+      const base64Image = compressedImage.replace(/^data:image\/\w+;base64,/, '');
+      
+      console.log('[FaceEnrollment] Compressed image size:', Math.round(base64Image.length / 1024), 'KB');
+      
+      await processEnrollment(base64Image);
+    } catch (err) {
+      console.error('[FaceEnrollment] Compression error:', err);
+      setEnrollmentStep('FAILED');
+      setErrorMessage('Failed to process image. Please try a different photo.');
+    }
   }, [uploadedImage, user?.id, processEnrollment]);
 
   // Capture and process face from camera
@@ -238,18 +295,30 @@ const FaceEnrollment = () => {
       return;
     }
 
-    // Capture frame
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    try {
+      // Capture frame at reduced resolution to avoid 413 errors
+      const targetWidth = Math.min(video.videoWidth, MAX_IMAGE_DIMENSION);
+      const targetHeight = Math.round((video.videoHeight / video.videoWidth) * targetWidth);
+      
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      context.drawImage(video, 0, 0, targetWidth, targetHeight);
 
-    const imageData = canvas.toDataURL('image/jpeg', 0.9);
-    const base64Image = imageData.replace(/^data:image\/\w+;base64,/, '');
+      const imageData = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+      const base64Image = imageData.replace(/^data:image\/\w+;base64,/, '');
 
-    // Stop camera after capture
-    stopCamera();
+      console.log('[FaceEnrollment] Captured image size:', Math.round(base64Image.length / 1024), 'KB');
 
-    await processEnrollment(base64Image);
+      // Stop camera after capture
+      stopCamera();
+
+      await processEnrollment(base64Image);
+    } catch (err) {
+      console.error('[FaceEnrollment] Capture error:', err);
+      setEnrollmentStep('FAILED');
+      setErrorMessage('Failed to capture image. Please try again.');
+      stopCamera();
+    }
   }, [user?.id, stopCamera, processEnrollment]);
 
   // Handle retry
