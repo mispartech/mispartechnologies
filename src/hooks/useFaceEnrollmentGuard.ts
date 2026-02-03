@@ -9,12 +9,12 @@ interface UseEnrollmentGuardResult {
 }
 
 /**
- * Guard hook that checks if user has completed face enrollment via Django API.
- * Uses the django-proxy edge function to avoid CORS issues.
+ * Guard hook that checks if user has completed face enrollment.
  * 
- * User is considered enrolled if:
- * - face_image_uploaded === true AND
- * - face_embedding_status === "READY"
+ * Since Django doesn't have a dedicated enrollment-status endpoint yet,
+ * we check the Supabase profiles table for face_image_url as a fallback.
+ * 
+ * User is considered enrolled if they have a face_image_url in their profile.
  */
 export const useFaceEnrollmentGuard = (userId: string | undefined): UseEnrollmentGuardResult => {
   const [isEnrolled, setIsEnrolled] = useState<boolean | null>(null);
@@ -31,40 +31,51 @@ export const useFaceEnrollmentGuard = (userId: string | undefined): UseEnrollmen
     setIsLoading(true);
 
     try {
-      // Call Django API through the edge function proxy to avoid CORS
-      const { data, error } = await supabase.functions.invoke('django-proxy', {
+      // First, try to check via Django proxy (if endpoint exists)
+      const { data: proxyData, error: proxyError } = await supabase.functions.invoke('django-proxy', {
         body: {
           action: 'check-enrollment-status',
           user_id: userId,
         },
       });
 
-      if (error) {
-        console.error('[FaceEnrollmentGuard] Edge function error:', error);
-        setIsEnrolled(false);
-        setEnrollmentStatus(null);
+      // If Django returned valid enrollment data, use it
+      if (!proxyError && proxyData && !proxyData.error && proxyData.face_embedding_status) {
+        const enrolled = proxyData.face_image_uploaded === true && proxyData.face_embedding_status === 'READY';
+        setIsEnrolled(enrolled);
+        setEnrollmentStatus(proxyData.face_embedding_status);
+        console.log('[FaceEnrollmentGuard] Django status:', {
+          face_image_uploaded: proxyData.face_image_uploaded,
+          face_embedding_status: proxyData.face_embedding_status,
+          enrolled
+        });
         return;
       }
 
-      if (data?.error) {
-        console.error('[FaceEnrollmentGuard] Django API error:', data.error);
+      // Fallback: Check Supabase profile for face_image_url
+      console.log('[FaceEnrollmentGuard] Django endpoint not available, checking Supabase profile...');
+      
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('face_image_url')
+        .eq('id', userId)
+        .single();
+
+      if (profileError) {
+        console.error('[FaceEnrollmentGuard] Profile fetch error:', profileError);
         // On error, assume not enrolled to be safe
         setIsEnrolled(false);
         setEnrollmentStatus(null);
         return;
       }
 
-      const { face_image_uploaded, face_embedding_status } = data;
-      
-      // User is enrolled ONLY if both conditions are met
-      const enrolled = face_image_uploaded === true && face_embedding_status === 'READY';
-      
+      // User is enrolled if they have a face_image_url
+      const enrolled = !!profile?.face_image_url;
       setIsEnrolled(enrolled);
-      setEnrollmentStatus(face_embedding_status);
+      setEnrollmentStatus(enrolled ? 'READY' : 'PENDING');
       
-      console.log('[FaceEnrollmentGuard] Status:', {
-        face_image_uploaded,
-        face_embedding_status,
+      console.log('[FaceEnrollmentGuard] Supabase fallback status:', {
+        face_image_url: profile?.face_image_url ? 'exists' : 'null',
         enrolled
       });
     } catch (err) {
