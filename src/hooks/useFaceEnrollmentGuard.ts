@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { djangoApi } from '@/lib/api/client';
+import { supabase } from '@/integrations/supabase/client';
 
 interface UseEnrollmentGuardResult {
   isEnrolled: boolean | null;
@@ -10,6 +10,8 @@ interface UseEnrollmentGuardResult {
 
 /**
  * Guard hook that checks if user has completed face enrollment via Django API.
+ * Uses the django-proxy edge function to avoid CORS issues.
+ * 
  * User is considered enrolled if:
  * - face_image_uploaded === true AND
  * - face_embedding_status === "READY"
@@ -29,34 +31,44 @@ export const useFaceEnrollmentGuard = (userId: string | undefined): UseEnrollmen
     setIsLoading(true);
 
     try {
-      const result = await djangoApi.checkFaceEnrollmentStatus(userId);
+      // Call Django API through the edge function proxy to avoid CORS
+      const { data, error } = await supabase.functions.invoke('django-proxy', {
+        body: {
+          action: 'check-enrollment-status',
+          user_id: userId,
+        },
+      });
 
-      if (result.error) {
-        console.error('Error checking face enrollment status:', result.error);
+      if (error) {
+        console.error('[FaceEnrollmentGuard] Edge function error:', error);
+        setIsEnrolled(false);
+        setEnrollmentStatus(null);
+        return;
+      }
+
+      if (data?.error) {
+        console.error('[FaceEnrollmentGuard] Django API error:', data.error);
         // On error, assume not enrolled to be safe
         setIsEnrolled(false);
         setEnrollmentStatus(null);
-      } else if (result.data) {
-        const { face_image_uploaded, face_embedding_status } = result.data;
-        
-        // User is enrolled ONLY if both conditions are met
-        const enrolled = face_image_uploaded === true && face_embedding_status === 'READY';
-        
-        setIsEnrolled(enrolled);
-        setEnrollmentStatus(face_embedding_status);
-        
-        console.log('[FaceEnrollmentGuard] Status:', {
-          face_image_uploaded,
-          face_embedding_status,
-          enrolled
-        });
-      } else {
-        // No data returned, assume not enrolled
-        setIsEnrolled(false);
-        setEnrollmentStatus(null);
+        return;
       }
+
+      const { face_image_uploaded, face_embedding_status } = data;
+      
+      // User is enrolled ONLY if both conditions are met
+      const enrolled = face_image_uploaded === true && face_embedding_status === 'READY';
+      
+      setIsEnrolled(enrolled);
+      setEnrollmentStatus(face_embedding_status);
+      
+      console.log('[FaceEnrollmentGuard] Status:', {
+        face_image_uploaded,
+        face_embedding_status,
+        enrolled
+      });
     } catch (err) {
-      console.error('Face enrollment check failed:', err);
+      console.error('[FaceEnrollmentGuard] Check failed:', err);
       setIsEnrolled(false);
       setEnrollmentStatus(null);
     } finally {
