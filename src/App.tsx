@@ -8,6 +8,7 @@ import Auth from "./pages/Auth";
 import Onboarding from "./pages/Onboarding";
 import Register from "./pages/Register";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { DjangoAuthProvider } from "@/contexts/DjangoAuthContext";
 import DashboardLayout from "./components/dashboard/DashboardLayout";
 import DashboardRouter from "./pages/dashboard/DashboardRouter";
 import MembersList from "./pages/dashboard/MembersList";
@@ -32,44 +33,46 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <BrowserRouter>
-      <TooltipProvider>
-        <PageWrapper>
-          <Toaster />
-          <Sonner />
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-            <Route path="/register" element={<Register />} />
-            
-            {/* Dashboard Routes */}
-            <Route path="/dashboard" element={<DashboardLayout />}>
-              <Route index element={<DashboardRouter />} />
-              <Route path="face-enrollment" element={<FaceEnrollment />} />
-              <Route path="members" element={<MembersList />} />
-              <Route path="temp-members" element={<TempMembersList />} />
-              <Route path="attendance" element={<AttendanceCapture />} />
-              <Route path="attendance-logs" element={<AttendanceLogs />} />
-              <Route path="attendance-history" element={<AttendanceHistory />} />
-              <Route path="departments" element={<DepartmentsList />} />
-              <Route path="profile" element={<ProfileSettings />} />
-              <Route path="my-attendance" element={<MyAttendanceHistory />} />
-              <Route path="face-gallery" element={<FaceGallery />} />
-              <Route path="reports" element={<Reports />} />
-              <Route path="settings" element={<OrganizationSettings />} />
-              <Route path="admin-management" element={<AdminManagement />} />
-              <Route path="activity-logs" element={<ActivityLogs />} />
-              <Route path="schedules" element={<ScheduleManagement />} />
-              <Route path="site-management" element={<SiteManagement />} />
-            </Route>
-            
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </PageWrapper>
-      </TooltipProvider>
-    </BrowserRouter>
+    <DjangoAuthProvider>
+      <BrowserRouter>
+        <TooltipProvider>
+          <PageWrapper>
+            <Toaster />
+            <Sonner />
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/onboarding" element={<Onboarding />} />
+              <Route path="/register" element={<Register />} />
+              
+              {/* Dashboard Routes */}
+              <Route path="/dashboard" element={<DashboardLayout />}>
+                <Route index element={<DashboardRouter />} />
+                <Route path="face-enrollment" element={<FaceEnrollment />} />
+                <Route path="members" element={<MembersList />} />
+                <Route path="temp-members" element={<TempMembersList />} />
+                <Route path="attendance" element={<AttendanceCapture />} />
+                <Route path="attendance-logs" element={<AttendanceLogs />} />
+                <Route path="attendance-history" element={<AttendanceHistory />} />
+                <Route path="departments" element={<DepartmentsList />} />
+                <Route path="profile" element={<ProfileSettings />} />
+                <Route path="my-attendance" element={<MyAttendanceHistory />} />
+                <Route path="face-gallery" element={<FaceGallery />} />
+                <Route path="reports" element={<Reports />} />
+                <Route path="settings" element={<OrganizationSettings />} />
+                <Route path="admin-management" element={<AdminManagement />} />
+                <Route path="activity-logs" element={<ActivityLogs />} />
+                <Route path="schedules" element={<ScheduleManagement />} />
+                <Route path="site-management" element={<SiteManagement />} />
+              </Route>
+              
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </PageWrapper>
+        </TooltipProvider>
+      </BrowserRouter>
+    </DjangoAuthProvider>
   </QueryClientProvider>
 );
 
