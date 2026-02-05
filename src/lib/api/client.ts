@@ -159,6 +159,39 @@ class DjangoApiClient {
     return result;
   }
 
+  /**
+   * Sync a Supabase user to Django - creates Django user if not exists
+   * Used during Phase 1 dual-auth bridge for existing Supabase users
+   */
+  async syncFromSupabase(data: {
+    supabase_uid: string;
+    email: string;
+    first_name?: string;
+    last_name?: string;
+  }): Promise<ApiResponse<{
+    access: string;
+    refresh: string;
+    user: {
+      id: string;
+      email: string;
+      first_name: string;
+      last_name: string;
+      role: string;
+      organization_id: string;
+    };
+  }>> {
+    const result = await this.request<any>('/api/auth/sync/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+
+    if (result.data?.access) {
+      this.saveTokens(result.data.access, result.data.refresh);
+    }
+
+    return result;
+  }
+
   async register(data: {
     email: string;
     password: string;

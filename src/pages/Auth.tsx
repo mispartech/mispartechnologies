@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { djangoApi } from '@/lib/api/client';
+import { useDjangoAuth } from '@/contexts/DjangoAuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,37 +25,53 @@ const Auth = () => {
   
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isAuthenticated, user, refreshUser } = useDjangoAuth();
 
+  // Redirect if already authenticated via Django
   useEffect(() => {
-    const checkUserAndRedirect = async (userId: string) => {
-      // Check if user has completed onboarding by checking organization_id
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', userId)
-        .single();
-
-      if (profile?.organization_id) {
+    if (isAuthenticated && user) {
+      if (user.organization_id) {
         navigate('/dashboard');
       } else {
         navigate('/onboarding');
       }
+    }
+  }, [isAuthenticated, user, navigate]);
+
+  // Also check Supabase session for existing users (Phase 1 bridge)
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user && !isAuthenticated) {
+        // Existing Supabase user - sync to Django
+        await syncSupabaseUserToDjango(session.user);
+      }
     };
+    
+    checkExistingSession();
+  }, [isAuthenticated]);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        checkUserAndRedirect(session.user.id);
+  const syncSupabaseUserToDjango = async (supabaseUser: any) => {
+    try {
+      const { data, error } = await djangoApi.syncFromSupabase({
+        supabase_uid: supabaseUser.id,
+        email: supabaseUser.email || '',
+        first_name: supabaseUser.user_metadata?.first_name || '',
+        last_name: supabaseUser.user_metadata?.last_name || '',
+      });
+
+      if (data && !error) {
+        await refreshUser();
+        if (data.user?.organization_id) {
+          navigate('/dashboard');
+        } else {
+          navigate('/onboarding');
+        }
       }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        checkUserAndRedirect(session.user.id);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    } catch (err) {
+      console.error('Failed to sync Supabase user to Django:', err);
+    }
+  };
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -87,67 +105,78 @@ const Auth = () => {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (error) {
-          if (error.message.includes('Invalid login credentials')) {
-            toast({
-              title: 'Login failed',
-              description: 'Invalid email or password. Please try again.',
-              variant: 'destructive',
-            });
+        // Phase 1: Try Django login first
+        const djangoResult = await djangoApi.login(email, password);
+        
+        if (!djangoResult.error && djangoResult.data?.user) {
+          // Django login successful
+          await refreshUser();
+          toast({
+            title: 'Welcome back!',
+            description: 'You have successfully logged in.',
+          });
+          
+          if (djangoResult.data.user.organization_id) {
+            navigate('/dashboard');
           } else {
-            toast({
-              title: 'Login failed',
-              description: error.message,
-              variant: 'destructive',
-            });
+            navigate('/onboarding');
           }
           return;
         }
 
-        toast({
-          title: 'Welcome back!',
-          description: 'You have successfully logged in.',
+        // Fallback: Try Supabase login for existing users
+        const { data: supabaseData, error: supabaseError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
         });
+
+        if (supabaseError) {
+          toast({
+            title: 'Login failed',
+            description: supabaseError.message.includes('Invalid login credentials')
+              ? 'Invalid email or password. Please try again.'
+              : supabaseError.message,
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        // Supabase login successful - sync to Django
+        if (supabaseData.user) {
+          await syncSupabaseUserToDjango(supabaseData.user);
+          toast({
+            title: 'Welcome back!',
+            description: 'You have successfully logged in.',
+          });
+        }
       } else {
-        const { error } = await supabase.auth.signUp({
+        // NEW SIGNUPS: Go directly to Django (Phase 1)
+        const djangoResult = await djangoApi.register({
           email,
           password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/`,
-            data: {
-              first_name: firstName,
-              last_name: lastName,
-            },
-          },
+          first_name: firstName,
+          last_name: lastName,
         });
 
-        if (error) {
-          if (error.message.includes('User already registered')) {
-            toast({
-              title: 'Account exists',
-              description: 'An account with this email already exists. Please log in instead.',
-              variant: 'destructive',
-            });
-            setIsLogin(true);
-          } else {
-            toast({
-              title: 'Sign up failed',
-              description: error.message,
-              variant: 'destructive',
-            });
-          }
+        if (djangoResult.error) {
+          toast({
+            title: 'Sign up failed',
+            description: djangoResult.error,
+            variant: 'destructive',
+          });
           return;
         }
 
-        toast({
-          title: 'Account created!',
-          description: 'Welcome to the Smart Attendance System.',
-        });
+        // Auto-login after registration
+        const loginResult = await djangoApi.login(email, password);
+        if (loginResult.data?.user) {
+          await refreshUser();
+          toast({
+            title: 'Account created!',
+            description: 'Welcome to the Smart Attendance System.',
+          });
+          navigate('/onboarding');
+        }
       }
     } catch (error) {
       toast({
