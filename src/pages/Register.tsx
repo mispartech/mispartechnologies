@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { djangoApi } from "@/lib/api/client";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Camera, CheckCircle2, AlertCircle, User } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -66,6 +67,31 @@ export default function Register() {
 
   const fetchInviteData = async () => {
     try {
+      // Try Django first for invite validation
+      const djangoResult = await djangoApi.getInvite(token!);
+      
+      if (djangoResult.data && !djangoResult.error) {
+        const data = djangoResult.data;
+        if (data.status === "accepted") {
+          setError("This invitation has already been used.");
+          setIsLoading(false);
+          return;
+        }
+        if (new Date(data.expires_at) < new Date()) {
+          setError("This invitation has expired. Please contact your administrator for a new one.");
+          setIsLoading(false);
+          return;
+        }
+        setInviteData(data);
+        setFirstName(data.first_name || "");
+        setLastName(data.last_name || "");
+        setPhone(data.phone_number || "");
+        setIsLoading(false);
+        return;
+      }
+
+      // Fallback: Check Supabase for invite (Phase 1 bridge for existing invites)
+      console.log('[Register] Django invite endpoint unavailable, falling back to Supabase');
       const { data, error } = await supabase
         .from("member_invites")
         .select("*")
@@ -159,7 +185,6 @@ export default function Register() {
         const imageData = canvas.toDataURL("image/jpeg", 0.8);
         setFaceImage(imageData);
         
-        // Stop camera
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
         }
@@ -178,91 +203,89 @@ export default function Register() {
 
     setIsSubmitting(true);
     try {
-      // 1. Create auth user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // 1. Register user via Django API (primary)
+      const registerResult = await djangoApi.register({
         email: inviteData.email,
         password: password,
-        options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-          },
-        },
+        first_name: firstName,
+        last_name: lastName,
+        phone_number: phone || undefined,
+        gender: inviteData.gender || undefined,
+        organization_id: inviteData.organization_id || undefined,
+        invite_token: token || undefined,
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Failed to create user account");
+      if (registerResult.error) {
+        throw new Error(registerResult.error);
+      }
 
-      // 2. Upload face image
-      const base64Data = faceImage.replace(/^data:image\/\w+;base64,/, "");
-      const buffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-      const fileName = `${authData.user.id}/${Date.now()}.jpg`;
+      // 2. Login to get Django JWT tokens
+      const loginResult = await djangoApi.login(inviteData.email, password);
+      
+      if (loginResult.error || !loginResult.data?.user) {
+        throw new Error(loginResult.error || "Failed to authenticate after registration");
+      }
 
-      const { error: uploadError } = await supabase.storage
-        .from("face-images")
-        .upload(fileName, buffer, {
-          contentType: "image/jpeg",
+      const djangoUserId = loginResult.data.user.id;
+
+      // 3. Also create Supabase auth user for Phase 1 bridge compatibility
+      try {
+        const { data: authData } = await supabase.auth.signUp({
+          email: inviteData.email,
+          password: password,
+          options: {
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+            },
+          },
         });
 
-      if (uploadError) {
-        console.error("Upload error:", uploadError);
+        // Sync Supabase user to Django if UIDs differ
+        if (authData?.user) {
+          await djangoApi.syncFromSupabase({
+            supabase_uid: authData.user.id,
+            email: inviteData.email,
+            first_name: firstName,
+            last_name: lastName,
+          });
+        }
+      } catch (supabaseErr) {
+        // Supabase signup failure is non-fatal during transition
+        console.warn("[Register] Supabase signup failed (non-fatal):", supabaseErr);
       }
 
-      const { data: urlData } = supabase.storage
-        .from("face-images")
-        .getPublicUrl(fileName);
-
-      // 3. Update profile
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          first_name: firstName,
-          last_name: lastName,
-          phone_number: phone,
-          gender: inviteData.gender,
-          department_id: inviteData.department_id,
-          organization_id: inviteData.organization_id,
-          face_image_url: urlData?.publicUrl || null,
-          role: "member",
-        })
-        .eq("id", authData.user.id);
-
-      if (profileError) {
-        console.error("Profile update error:", profileError);
-      }
-
-      // 4. Create user role
-      await supabase.from("user_roles").insert({
-        user_id: authData.user.id,
-        role: "member",
-        organization_id: inviteData.organization_id,
-      });
-
-      // 5. Register face with Django API
+      // 4. Enroll face via edge function (already proxies to Django)
       try {
         await supabase.functions.invoke("face-recognition", {
           body: {
-            action: "register",
+            action: "enroll",
             image: faceImage,
+            mode: "ENROLL",
             user_data: {
-              user_id: authData.user.id,
+              user_id: djangoUserId,
               name: `${firstName} ${lastName}`,
             },
           },
         });
       } catch (faceError) {
         console.error("Face registration error:", faceError);
-        // Continue anyway - face can be registered later
+        // Continue - face can be registered later via enrollment page
       }
 
-      // 6. Update invite status
-      await supabase
-        .from("member_invites")
-        .update({ 
-          status: "accepted",
-          accepted_at: new Date().toISOString(),
-        })
-        .eq("id", inviteData.id);
+      // 5. Mark invite as accepted via Django (with Supabase fallback)
+      try {
+        await djangoApi.acceptInvite(inviteData.id);
+      } catch {
+        // Fallback: update Supabase invite status
+        await supabase
+          .from("member_invites")
+          .update({ 
+            status: "accepted",
+            accepted_at: new Date().toISOString(),
+          })
+          .eq("id", inviteData.id);
+      }
 
       setStep("complete");
       toast({

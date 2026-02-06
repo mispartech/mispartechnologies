@@ -427,6 +427,30 @@ class DjangoApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  // ============ INVITE ENDPOINTS ============
+
+  async getInvite(token: string): Promise<ApiResponse<{
+    id: string;
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+    phone_number: string | null;
+    gender: string | null;
+    department_id: string | null;
+    organization_id: string | null;
+    status: string;
+    expires_at: string;
+  }>> {
+    return this.request(`/api/invites/${token}/`);
+  }
+
+  async acceptInvite(inviteId: string): Promise<ApiResponse<void>> {
+    return this.request(`/api/invites/${inviteId}/accept/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'accepted' }),
+    });
+  }
 }
 
 // Export singleton instance
