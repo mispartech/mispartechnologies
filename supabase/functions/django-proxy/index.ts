@@ -37,15 +37,15 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { action, user_id, endpoint, method = 'GET', payload } = body;
+    const { action, user_id, endpoint, method = 'GET', payload, headers: clientHeaders } = body;
 
-    console.log(`[django-proxy] Action: ${action}, User ID: ${user_id}, Endpoint: ${endpoint}`);
+    console.log(`[django-proxy] Action: ${action}, User ID: ${user_id}, Endpoint: ${endpoint}, Method: ${method}`);
 
     let djangoUrl: string;
     let requestMethod = method;
     let requestBody: string | undefined;
 
-    // Route based on action
+    // Route based on action or endpoint
     if (action === 'check-enrollment-status') {
       if (!user_id) {
         return new Response(JSON.stringify({
@@ -83,8 +83,10 @@ serve(async (req) => {
 
     console.log(`[django-proxy] Calling Django: ${requestMethod} ${djangoUrl}`);
 
-    // Forward authorization header if present
-    const authHeader = req.headers.get('Authorization');
+    // Forward authorization header - prefer client-supplied headers, then request header
+    const authHeader = (clientHeaders as Record<string, string>)?.['Authorization'] || 
+                       (clientHeaders as Record<string, string>)?.['authorization'] || 
+                       req.headers.get('Authorization');
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
