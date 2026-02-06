@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { djangoApi } from '@/lib/api/client';
 
 /**
  * Backend response types - matches Django API contract
@@ -200,7 +201,15 @@ export const useFaceRecognition = () => {
     setError(null);
 
     try {
+      // Build headers with Django JWT for authenticated requests
+      const headers: Record<string, string> = {};
+      const djangoToken = djangoApi.getAccessToken();
+      if (djangoToken) {
+        headers['Authorization'] = `Bearer ${djangoToken}`;
+      }
+
       const { data, error: fnError } = await supabase.functions.invoke('face-recognition', {
+        headers,
         body: {
           action: 'recognize',
           image: imageBase64,
@@ -277,7 +286,15 @@ export const useFaceRecognition = () => {
     setError(null);
 
     try {
+      // Build headers with Django JWT
+      const headers: Record<string, string> = {};
+      const djangoToken = djangoApi.getAccessToken();
+      if (djangoToken) {
+        headers['Authorization'] = `Bearer ${djangoToken}`;
+      }
+
       const { data, error: fnError } = await supabase.functions.invoke('face-recognition', {
+        headers,
         body: {
           action: 'enroll',
           image: imageBase64,

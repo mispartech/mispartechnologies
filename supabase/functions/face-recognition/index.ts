@@ -35,8 +35,11 @@ serve(async (req) => {
     
     // Support both 'image' and 'frame' keys for the image data
     const imageData = image || frame;
+
+    // Extract Django JWT from request headers for forwarding
+    const authHeader = req.headers.get('Authorization');
     
-    console.log(`Processing action: ${action}, mode: ${mode || 'RECOGNIZE'}`);
+    console.log(`Processing action: ${action}, mode: ${mode || 'RECOGNIZE'}, has_auth: ${!!authHeader}`);
 
     if (action === 'recognize') {
       // Forward recognition request to Django - NO local processing
@@ -44,11 +47,16 @@ serve(async (req) => {
       
       let response;
       try {
+        const requestHeaders: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (authHeader) {
+          requestHeaders['Authorization'] = authHeader;
+        }
+
         response = await fetch(`${DJANGO_API_URL}/api/recognize-frame/`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: requestHeaders,
           body: JSON.stringify({ 
             frame: imageData,
             mode: mode || 'RECOGNIZE',
@@ -141,11 +149,16 @@ serve(async (req) => {
 
       let response;
       try {
+        const enrollHeaders: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (authHeader) {
+          enrollHeaders['Authorization'] = authHeader;
+        }
+
         response = await fetch(`${DJANGO_API_URL}/api/recognize-frame/`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: enrollHeaders,
           body: JSON.stringify({
             frame: imageData,
             mode: 'ENROLL',

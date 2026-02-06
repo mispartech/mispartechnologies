@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { djangoApi } from '@/lib/api/client';
 
 interface UseEnrollmentGuardResult {
   isEnrolled: boolean | null;
@@ -10,11 +10,8 @@ interface UseEnrollmentGuardResult {
 
 /**
  * Guard hook that checks if user has completed face enrollment.
- * 
- * Since Django doesn't have a dedicated enrollment-status endpoint yet,
- * we check the Supabase profiles table for face_image_url as a fallback.
- * 
- * User is considered enrolled if they have a face_image_url in their profile.
+ * Uses Django API as the source of truth for enrollment status.
+ * Falls back to checking Django user's face_image_url field.
  */
 export const useFaceEnrollmentGuard = (userId: string | undefined): UseEnrollmentGuardResult => {
   const [isEnrolled, setIsEnrolled] = useState<boolean | null>(null);
@@ -31,53 +28,40 @@ export const useFaceEnrollmentGuard = (userId: string | undefined): UseEnrollmen
     setIsLoading(true);
 
     try {
-      // First, try to check via Django proxy (if endpoint exists)
-      const { data: proxyData, error: proxyError } = await supabase.functions.invoke('django-proxy', {
-        body: {
-          action: 'check-enrollment-status',
-          user_id: userId,
-        },
-      });
+      // Check via Django enrollment status endpoint
+      const result = await djangoApi.checkFaceEnrollmentStatus(userId);
 
-      // If Django returned valid enrollment data, use it
-      if (!proxyError && proxyData && !proxyData.error && proxyData.face_embedding_status) {
-        const enrolled = proxyData.face_image_uploaded === true && proxyData.face_embedding_status === 'READY';
+      if (result.data && !result.error && result.data.face_embedding_status) {
+        const enrolled = result.data.face_image_uploaded === true && result.data.face_embedding_status === 'READY';
         setIsEnrolled(enrolled);
-        setEnrollmentStatus(proxyData.face_embedding_status);
+        setEnrollmentStatus(result.data.face_embedding_status);
         console.log('[FaceEnrollmentGuard] Django status:', {
-          face_image_uploaded: proxyData.face_image_uploaded,
-          face_embedding_status: proxyData.face_embedding_status,
+          face_image_uploaded: result.data.face_image_uploaded,
+          face_embedding_status: result.data.face_embedding_status,
           enrolled
         });
         return;
       }
 
-      // Fallback: Check Supabase profile for face_image_url
-      console.log('[FaceEnrollmentGuard] Django endpoint not available, checking Supabase profile...');
+      // Fallback: Check Django user profile for face_image_url
+      console.log('[FaceEnrollmentGuard] Enrollment status endpoint unavailable, checking Django user profile...');
+      const userResult = await djangoApi.getCurrentUser();
       
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('face_image_url')
-        .eq('id', userId)
-        .single();
-
-      if (profileError) {
-        console.error('[FaceEnrollmentGuard] Profile fetch error:', profileError);
-        // On error, assume not enrolled to be safe
-        setIsEnrolled(false);
-        setEnrollmentStatus(null);
+      if (userResult.data && !userResult.error) {
+        const enrolled = !!userResult.data.face_image_url;
+        setIsEnrolled(enrolled);
+        setEnrollmentStatus(enrolled ? 'READY' : 'PENDING');
+        console.log('[FaceEnrollmentGuard] Django user fallback:', {
+          face_image_url: userResult.data.face_image_url ? 'exists' : 'null',
+          enrolled
+        });
         return;
       }
 
-      // User is enrolled if they have a face_image_url
-      const enrolled = !!profile?.face_image_url;
-      setIsEnrolled(enrolled);
-      setEnrollmentStatus(enrolled ? 'READY' : 'PENDING');
-      
-      console.log('[FaceEnrollmentGuard] Supabase fallback status:', {
-        face_image_url: profile?.face_image_url ? 'exists' : 'null',
-        enrolled
-      });
+      // If Django is unreachable, assume not enrolled
+      console.warn('[FaceEnrollmentGuard] Django unreachable, assuming not enrolled');
+      setIsEnrolled(false);
+      setEnrollmentStatus(null);
     } catch (err) {
       console.error('[FaceEnrollmentGuard] Check failed:', err);
       setIsEnrolled(false);
