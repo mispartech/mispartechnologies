@@ -1,11 +1,11 @@
 /**
  * Django API Client
  * 
- * This is the main client for communicating with the Django backend.
- * All user, member, face, and attendance data goes through here.
+ * Routes all Django API calls through the django-proxy edge function
+ * to avoid CORS issues with direct browser-to-Django requests.
  */
 
-const DJANGO_API_URL = 'https://api.mispartechnologies.com';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ApiResponse<T> {
   data?: T;
@@ -14,12 +14,10 @@ interface ApiResponse<T> {
 }
 
 class DjangoApiClient {
-  private baseUrl: string;
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
 
-  constructor(baseUrl: string = DJANGO_API_URL) {
-    this.baseUrl = baseUrl;
+  constructor() {
     this.loadTokens();
   }
 
@@ -56,49 +54,62 @@ class DjangoApiClient {
     return this.accessToken;
   }
 
+  /**
+   * All requests go through the django-proxy edge function to avoid CORS.
+   */
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
-    const url = `${this.baseUrl}${endpoint}`;
-    
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    };
-
+    const headers: Record<string, string> = {};
     if (this.accessToken) {
-      (headers as Record<string, string>)['Authorization'] = `Bearer ${this.accessToken}`;
+      headers['Authorization'] = `Bearer ${this.accessToken}`;
     }
 
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
+      const payload: Record<string, unknown> = {
+        endpoint,
+        method: options.method || 'GET',
+      };
 
-      // Handle 401 - try refresh token
-      if (response.status === 401 && this.refreshToken) {
-        const refreshed = await this.refreshAccessToken();
-        if (refreshed) {
-          // Retry with new token
-          (headers as Record<string, string>)['Authorization'] = `Bearer ${this.accessToken}`;
-          const retryResponse = await fetch(url, { ...options, headers });
-          const retryData = await retryResponse.json().catch(() => null);
-          return {
-            data: retryData,
-            status: retryResponse.status,
-            error: retryResponse.ok ? undefined : retryData?.detail || retryData?.error || 'Request failed',
-          };
+      // Parse body if it's a string
+      if (options.body && typeof options.body === 'string') {
+        try {
+          payload.payload = JSON.parse(options.body);
+        } catch {
+          payload.payload = options.body;
         }
       }
 
-      const data = await response.json().catch(() => null);
-      
+      // Forward auth header
+      if (this.accessToken) {
+        payload.headers = { Authorization: `Bearer ${this.accessToken}` };
+      }
+
+      const { data: responseData, error: invokeError } = await supabase.functions.invoke('django-proxy', {
+        body: payload,
+      });
+
+      if (invokeError) {
+        console.error('Edge function invoke error:', invokeError);
+        return {
+          status: 0,
+          error: invokeError.message || 'Proxy request failed',
+        };
+      }
+
+      // The django-proxy returns the Django response directly
+      // Check if it's an error response from Django
+      if (responseData?.error) {
+        return {
+          status: responseData.status || 400,
+          error: responseData.error || responseData.detail || 'Request failed',
+        };
+      }
+
       return {
-        data: response.ok ? data : undefined,
-        status: response.status,
-        error: response.ok ? undefined : data?.detail || data?.error || data?.message || 'Request failed',
+        data: responseData as T,
+        status: 200,
       };
     } catch (err) {
       console.error('API request failed:', err);
@@ -109,18 +120,22 @@ class DjangoApiClient {
     }
   }
 
+  /**
+   * Handle 401 by refreshing the Django access token via the proxy.
+   */
   private async refreshAccessToken(): Promise<boolean> {
     if (!this.refreshToken) return false;
 
     try {
-      const response = await fetch(`${this.baseUrl}/api/auth/token/refresh/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh: this.refreshToken }),
+      const { data, error } = await supabase.functions.invoke('django-proxy', {
+        body: {
+          endpoint: '/api/auth/token/refresh/',
+          method: 'POST',
+          payload: { refresh: this.refreshToken },
+        },
       });
 
-      if (response.ok) {
-        const data = await response.json();
+      if (!error && data?.access) {
         this.saveTokens(data.access, this.refreshToken!);
         return true;
       }
@@ -456,5 +471,5 @@ class DjangoApiClient {
 // Export singleton instance
 export const djangoApi = new DjangoApiClient();
 
-// Export class for testing or custom instances
+// Export class for testing
 export { DjangoApiClient };
