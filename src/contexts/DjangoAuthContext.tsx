@@ -96,20 +96,12 @@ export const DjangoAuthProvider = ({ children }: { children: ReactNode }) => {
     gender?: string;
     invite_token?: string;
   }) => {
-    const { data: result, error } = await djangoApi.register(data);
-    
-    if (error) {
-      return { error };
-    }
-
-    // Auto-login after registration
-    const loginResult = await login(data.email, data.password);
-    if (loginResult.error) {
-      return { error: loginResult.error };
-    }
-
-    return { user: user || undefined };
-  }, [login, user]);
+    // Registration now goes through Supabase signup + Django sync.
+    // This method is kept for backward compat but delegates to syncFromSupabase.
+    // Callers should use Supabase signup first, then call syncFromSupabase directly.
+    console.warn('[DjangoAuthProvider] register() is deprecated. Use Supabase signup + syncFromSupabase().');
+    return { error: 'Use Supabase signup + syncFromSupabase() flow instead.' };
+  }, []);
 
   const value: AuthContextType = {
     user,

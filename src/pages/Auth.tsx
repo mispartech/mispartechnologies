@@ -150,33 +150,56 @@ const Auth = () => {
           });
         }
       } else {
-        // NEW SIGNUPS: Go directly to Django (Phase 1)
-        const djangoResult = await djangoApi.register({
+        // NEW SIGNUPS: Create Supabase auth user, then sync to Django
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
-          first_name: firstName,
-          last_name: lastName,
+          options: {
+            data: { first_name: firstName, last_name: lastName },
+          },
         });
 
-        if (djangoResult.error) {
+        if (signUpError) {
           toast({
             title: 'Sign up failed',
-            description: djangoResult.error,
+            description: signUpError.message,
             variant: 'destructive',
           });
           return;
         }
 
-        // Auto-login after registration
-        const loginResult = await djangoApi.login(email, password);
-        if (loginResult.data?.user) {
-          await refreshUser();
+        if (!signUpData?.user) {
           toast({
-            title: 'Account created!',
-            description: 'Welcome to the Smart Attendance System.',
+            title: 'Sign up failed',
+            description: 'No user returned from signup.',
+            variant: 'destructive',
           });
-          navigate('/onboarding');
+          return;
         }
+
+        // Sync to Django — this is the critical step
+        const syncResult = await djangoApi.syncFromSupabase({
+          supabase_uid: signUpData.user.id,
+          email,
+          first_name: firstName,
+          last_name: lastName,
+        });
+
+        if (syncResult.error || !syncResult.data?.user) {
+          toast({
+            title: 'Account sync failed',
+            description: syncResult.error || 'Account sync failed. Please retry.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        await refreshUser();
+        toast({
+          title: 'Account created!',
+          description: 'Welcome to the Smart Attendance System.',
+        });
+        navigate('/onboarding');
       }
     } catch (error) {
       toast({

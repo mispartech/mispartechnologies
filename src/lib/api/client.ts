@@ -188,7 +188,11 @@ class DjangoApiClient {
     return result;
   }
 
-  async register(data: {
+  /**
+   * @deprecated Use Supabase signup + syncFromSupabase() instead.
+   * Django does not expose /api/auth/register/.
+   */
+  async register(_data: {
     email: string;
     password: string;
     first_name: string;
@@ -198,10 +202,8 @@ class DjangoApiClient {
     organization_id?: string;
     invite_token?: string;
   }): Promise<ApiResponse<{ id: string; email: string }>> {
-    return this.request('/api/auth/register/', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    console.warn('[DjangoApiClient] register() is deprecated. Use Supabase signup + syncFromSupabase().');
+    return { status: 501, error: 'Use Supabase signup + syncFromSupabase() instead of register()' };
   }
 
   async logout(): Promise<void> {

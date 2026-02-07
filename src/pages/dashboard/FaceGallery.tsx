@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { djangoApi } from '@/lib/api/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -94,15 +95,16 @@ const FaceGallery = () => {
 
       if (updateError) throw updateError;
 
-      // Optionally register with Django API
-      await supabase.functions.invoke('face-recognition', {
-        body: {
-          action: 'register',
-          user_id: selectedMember.id,
-          name: `${selectedMember.first_name} ${selectedMember.last_name}`,
-          image: publicUrl,
-        }
-      });
+      // Register face with Django API directly
+      try {
+        await djangoApi.enrollFace(
+          selectedMember.id,
+          publicUrl,
+          `${selectedMember.first_name} ${selectedMember.last_name}`
+        );
+      } catch (faceErr) {
+        console.warn('Django face enrollment failed (non-fatal):', faceErr);
+      }
 
       setMembers(prev => prev.map(m => 
         m.id === selectedMember.id ? { ...m, face_image_url: publicUrl } : m
