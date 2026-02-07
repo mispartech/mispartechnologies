@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { djangoApi } from '@/lib/api/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -215,29 +216,22 @@ const FaceEnrollment = () => {
     try {
       const userName = `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim() || user.email;
       
-      // Use edge function to enroll - avoids CORS, passes through to Django
-      const { data, error } = await supabase.functions.invoke('face-recognition', {
-        body: {
-          action: 'enroll',
-          image: base64Image,
-          user_data: {
-            user_id: user.id,
-            name: userName,
-          },
-        },
-      });
+      // Call Django API directly for face enrollment
+      const result = await djangoApi.enrollFace(user.id, base64Image, userName);
 
-      if (error) {
-        throw new Error(error.message);
+      if (result.error) {
+        throw new Error(result.error);
       }
 
+      const data = result.data;
+
       // Handle duplicate face error from Django
-      if (data?.code === 'DUPLICATE_FACE' || data?.error === 'duplicate_face') {
+      if (data?.status === 'DUPLICATE_FACE') {
         throw new Error(data.message || 'This face appears to be already enrolled for another user.');
       }
 
       // Check for success - trust backend response completely
-      if (data?.success && data?.embedding_saved) {
+      if (data?.embedding_saved) {
         setEnrollmentStep('VERIFIED');
         
         // Navigate to dashboard after brief success display
@@ -245,7 +239,7 @@ const FaceEnrollment = () => {
           navigate('/dashboard');
         }, 2000);
       } else {
-        throw new Error(data?.message || data?.error || 'Face enrollment failed. Please try again.');
+        throw new Error(data?.message || 'Face enrollment failed. Please try again.');
       }
     } catch (err: any) {
       console.error('Enrollment error:', err);

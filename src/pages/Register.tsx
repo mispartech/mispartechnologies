@@ -203,81 +203,56 @@ export default function Register() {
 
     setIsSubmitting(true);
     try {
-      // 1. Register user via Django API (primary)
-      const registerResult = await djangoApi.register({
+      // 1. Create Supabase auth user (identity provider)
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: inviteData.email,
         password: password,
-        first_name: firstName,
-        last_name: lastName,
-        phone_number: phone || undefined,
-        gender: inviteData.gender || undefined,
-        organization_id: inviteData.organization_id || undefined,
-        invite_token: token || undefined,
-      });
-
-      if (registerResult.error) {
-        throw new Error(registerResult.error);
-      }
-
-      // 2. Login to get Django JWT tokens
-      const loginResult = await djangoApi.login(inviteData.email, password);
-      
-      if (loginResult.error || !loginResult.data?.user) {
-        throw new Error(loginResult.error || "Failed to authenticate after registration");
-      }
-
-      const djangoUserId = loginResult.data.user.id;
-
-      // 3. Also create Supabase auth user for Phase 1 bridge compatibility
-      try {
-        const { data: authData } = await supabase.auth.signUp({
-          email: inviteData.email,
-          password: password,
-          options: {
-            data: {
-              first_name: firstName,
-              last_name: lastName,
-            },
-          },
-        });
-
-        // Sync Supabase user to Django if UIDs differ
-        if (authData?.user) {
-          await djangoApi.syncFromSupabase({
-            supabase_uid: authData.user.id,
-            email: inviteData.email,
+        options: {
+          data: {
             first_name: firstName,
             last_name: lastName,
-          });
-        }
-      } catch (supabaseErr) {
-        // Supabase signup failure is non-fatal during transition
-        console.warn("[Register] Supabase signup failed (non-fatal):", supabaseErr);
+          },
+        },
+      });
+
+      if (signUpError) {
+        throw new Error(signUpError.message);
       }
 
-      // 4. Enroll face via edge function (already proxies to Django)
+      if (!authData?.user) {
+        throw new Error("Signup failed — no user returned");
+      }
+
+      // 2. Sync to Django to create backend user + get JWT
+      const syncResult = await djangoApi.syncFromSupabase({
+        supabase_uid: authData.user.id,
+        email: inviteData.email,
+        first_name: firstName,
+        last_name: lastName,
+      });
+
+      if (syncResult.error || !syncResult.data?.user) {
+        throw new Error(syncResult.error || "Account sync failed. Please retry.");
+      }
+
+      const djangoUserId = syncResult.data.user.id;
+
+      // 3. Enroll face directly via Django API
       try {
-        await supabase.functions.invoke("face-recognition", {
-          body: {
-            action: "enroll",
-            image: faceImage,
-            mode: "ENROLL",
-            user_data: {
-              user_id: djangoUserId,
-              name: `${firstName} ${lastName}`,
-            },
-          },
-        });
+        await djangoApi.enrollFace(
+          djangoUserId,
+          faceImage.replace(/^data:image\/\w+;base64,/, ''),
+          `${firstName} ${lastName}`
+        );
       } catch (faceError) {
         console.error("Face registration error:", faceError);
         // Continue - face can be registered later via enrollment page
       }
 
-      // 5. Mark invite as accepted via Django (with Supabase fallback)
+      // 4. Mark invite as accepted via Django (with Supabase fallback)
       try {
         await djangoApi.acceptInvite(inviteData.id);
       } catch {
-        // Fallback: update Supabase invite status
         await supabase
           .from("member_invites")
           .update({ 
