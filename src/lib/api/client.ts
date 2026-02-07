@@ -1,11 +1,11 @@
 /**
  * Django API Client
  * 
- * Routes all Django API calls through the django-proxy edge function
- * to avoid CORS issues with direct browser-to-Django requests.
+ * Calls the Django API directly at https://api.mispartechnologies.com
+ * Django handles CORS — no edge function proxy needed.
  */
 
-import { supabase } from '@/integrations/supabase/client';
+const DJANGO_BASE_URL = 'https://api.mispartechnologies.com';
 
 interface ApiResponse<T> {
   data?: T;
@@ -55,62 +55,46 @@ class DjangoApiClient {
   }
 
   /**
-   * All requests go through the django-proxy edge function to avoid CORS.
+   * Direct fetch to Django API. CORS is handled server-side.
    */
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
     if (this.accessToken) {
       headers['Authorization'] = `Bearer ${this.accessToken}`;
     }
 
+    const url = `${DJANGO_BASE_URL}${endpoint}`;
+
     try {
-      const payload: Record<string, unknown> = {
-        endpoint,
-        method: options.method || 'GET',
-      };
-
-      // Parse body if it's a string
-      if (options.body && typeof options.body === 'string') {
-        try {
-          payload.payload = JSON.parse(options.body);
-        } catch {
-          payload.payload = options.body;
-        }
-      }
-
-      // Forward auth header
-      if (this.accessToken) {
-        payload.headers = { Authorization: `Bearer ${this.accessToken}` };
-      }
-
-      const { data: responseData, error: invokeError } = await supabase.functions.invoke('django-proxy', {
-        body: payload,
+      const response = await fetch(url, {
+        ...options,
+        headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
       });
 
-      if (invokeError) {
-        console.error('Edge function invoke error:', invokeError);
+      const text = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        if (!response.ok) {
+          return { status: response.status, error: text || 'Request failed' };
+        }
+        return { data: text as unknown as T, status: response.status };
+      }
+
+      if (!response.ok) {
         return {
-          status: 0,
-          error: invokeError.message || 'Proxy request failed',
+          status: response.status,
+          error: data?.detail || data?.error || data?.message || 'Request failed',
         };
       }
 
-      // The django-proxy returns the Django response directly
-      // Check if it's an error response from Django
-      if (responseData?.error) {
-        return {
-          status: responseData.status || 400,
-          error: responseData.error || responseData.detail || 'Request failed',
-        };
-      }
-
-      return {
-        data: responseData as T,
-        status: 200,
-      };
+      return { data: data as T, status: response.status };
     } catch (err) {
       console.error('API request failed:', err);
       return {
@@ -121,23 +105,24 @@ class DjangoApiClient {
   }
 
   /**
-   * Handle 401 by refreshing the Django access token via the proxy.
+   * Handle 401 by refreshing the Django access token.
    */
   private async refreshAccessToken(): Promise<boolean> {
     if (!this.refreshToken) return false;
 
     try {
-      const { data, error } = await supabase.functions.invoke('django-proxy', {
-        body: {
-          endpoint: '/api/auth/token/refresh/',
-          method: 'POST',
-          payload: { refresh: this.refreshToken },
-        },
+      const response = await fetch(`${DJANGO_BASE_URL}/api/auth/token/refresh/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh: this.refreshToken }),
       });
 
-      if (!error && data?.access) {
-        this.saveTokens(data.access, this.refreshToken!);
-        return true;
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.access) {
+          this.saveTokens(data.access, this.refreshToken!);
+          return true;
+        }
       }
     } catch (err) {
       console.error('Token refresh failed:', err);
@@ -174,10 +159,6 @@ class DjangoApiClient {
     return result;
   }
 
-  /**
-   * Sync a Supabase user to Django - creates Django user if not exists
-   * Used during Phase 1 dual-auth bridge for existing Supabase users
-   */
   async syncFromSupabase(data: {
     supabase_uid: string;
     email: string;
@@ -228,7 +209,7 @@ class DjangoApiClient {
       await this.request('/api/auth/logout/', {
         method: 'POST',
         body: JSON.stringify({ refresh: this.refreshToken }),
-      }).catch(() => {}); // Ignore errors on logout
+      }).catch(() => {});
     }
     this.clearTokens();
   }
@@ -320,10 +301,6 @@ class DjangoApiClient {
 
   // ============ FACE ENDPOINTS ============
 
-  /**
-   * Check if user has completed face enrollment
-   * Returns face_image_uploaded and face_embedding_status
-   */
   async checkFaceEnrollmentStatus(userId: string): Promise<ApiResponse<{
     face_image_uploaded: boolean;
     face_embedding_status: 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED' | null;
@@ -331,10 +308,6 @@ class DjangoApiClient {
     return this.request(`/api/face/enrollment-status/${userId}/`);
   }
 
-  /**
-   * Enroll face using /api/recognize-frame/ in ENROLLMENT MODE
-   * This captures the face, saves embedding, and updates user record
-   */
   async enrollFace(userId: string, imageBase64: string, userName?: string): Promise<ApiResponse<{
     status: string;
     embedding_saved: boolean;
@@ -352,16 +325,14 @@ class DjangoApiClient {
     });
   }
 
-  async recognizeFace(imageBase64: string): Promise<ApiResponse<{
-    faces: Array<{
-      user_id: string;
-      name: string;
-      confidence: number;
-    }>;
-  }>> {
+  async recognizeFace(imageBase64: string, organizationId?: string): Promise<ApiResponse<any>> {
     return this.request('/api/recognize-frame/', {
       method: 'POST',
-      body: JSON.stringify({ frame: imageBase64 }),
+      body: JSON.stringify({
+        frame: imageBase64,
+        mode: 'RECOGNIZE',
+        organization_id: organizationId,
+      }),
     });
   }
 
@@ -465,6 +436,12 @@ class DjangoApiClient {
       method: 'PATCH',
       body: JSON.stringify({ status: 'accepted' }),
     });
+  }
+
+  // ============ HEALTH CHECK ============
+
+  async healthCheck(): Promise<ApiResponse<any>> {
+    return this.request('/api/health/');
   }
 }
 

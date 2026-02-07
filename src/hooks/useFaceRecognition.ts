@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { djangoApi } from '@/lib/api/client';
 
 /**
@@ -15,14 +14,14 @@ type ResponseType = 'KNOWN' | 'TEMP' | null;
 export type AttendanceStatus = 'detecting' | 'confirmed';
 
 export interface TrackedFace {
-  id: string; // user_id for KNOWN users, temp_user_id for TEMP users
+  id: string;
   name: string;
   type: 'member' | 'visitor';
   confidence: number | null;
   bbox: number[];
   attendanceStatus: AttendanceStatus;
-  attendanceMarked?: boolean; // From backend
-  requiresClaim?: boolean; // For temp users
+  attendanceMarked?: boolean;
+  requiresClaim?: boolean;
   lastSeen: number;
 }
 
@@ -40,7 +39,7 @@ interface DjangoResponse {
   requires_claim?: boolean;
   name?: string;
   bbox?: number[];
-  faces?: LegacyFace[]; // Legacy format support
+  faces?: LegacyFace[];
   faces_count?: number;
   message?: string;
   error?: string;
@@ -74,8 +73,6 @@ interface RegistrationResult {
 interface HealthCheckResult {
   success: boolean;
   django_api: 'connected' | 'unreachable' | 'error';
-  edge_function: string;
-  django_status?: unknown;
   error?: string;
   timestamp: string;
 }
@@ -184,8 +181,7 @@ export const useFaceRecognition = () => {
   }, []);
 
   /**
-   * Send frame to Django for recognition - NO local processing
-   * Frontend trusts backend response completely
+   * Send frame to Django directly for recognition
    */
   const recognizeFace = useCallback(async (
     imageBase64: string, 
@@ -201,28 +197,14 @@ export const useFaceRecognition = () => {
     setError(null);
 
     try {
-      // Build headers with Django JWT for authenticated requests
-      const headers: Record<string, string> = {};
-      const djangoToken = djangoApi.getAccessToken();
-      if (djangoToken) {
-        headers['Authorization'] = `Bearer ${djangoToken}`;
+      const result = await djangoApi.recognizeFace(imageBase64, organizationId);
+
+      if (result.error) {
+        setError(result.error);
+        return { success: false, faces: trackedFaces, scanningBboxes, shouldPause: false, error: result.error };
       }
 
-      const { data, error: fnError } = await supabase.functions.invoke('face-recognition', {
-        headers,
-        body: {
-          action: 'recognize',
-          image: imageBase64,
-          mode: 'RECOGNIZE',
-          organization_id: organizationId,
-        },
-      });
-
-      if (fnError) {
-        throw new Error(fnError.message);
-      }
-
-      const response = data as DjangoResponse;
+      const response = result.data as DjangoResponse;
       
       if (!response.success) {
         const msg = response.error || response.message || 'Recognition failed';
@@ -276,7 +258,7 @@ export const useFaceRecognition = () => {
   }, [trackedFaces, scanningBboxes]);
 
   /**
-   * Register/enroll face via Django - NO local DB writes
+   * Register/enroll face via Django directly
    */
   const registerFace = useCallback(async (
     imageBase64: string,
@@ -286,45 +268,23 @@ export const useFaceRecognition = () => {
     setError(null);
 
     try {
-      // Build headers with Django JWT
-      const headers: Record<string, string> = {};
-      const djangoToken = djangoApi.getAccessToken();
-      if (djangoToken) {
-        headers['Authorization'] = `Bearer ${djangoToken}`;
+      const result = await djangoApi.enrollFace(userData.user_id, imageBase64, userData.name);
+
+      if (result.error) {
+        setError(result.error);
+        return { success: false, error: result.error };
       }
 
-      const { data, error: fnError } = await supabase.functions.invoke('face-recognition', {
-        headers,
-        body: {
-          action: 'enroll',
-          image: imageBase64,
-          mode: 'ENROLL',
-          user_data: userData,
-        },
-      });
-
-      if (fnError) {
-        throw new Error(fnError.message);
-      }
-
-      const result = data as RegistrationResult;
-      
-      if (!result.success) {
-        const msg = result.error || 'Registration failed';
+      const data = result.data;
+      if (data && !data.embedding_saved) {
+        const msg = data.message || 'Enrollment failed';
         setError(msg);
-        
-        // Handle duplicate face error
-        if (result.code === 'DUPLICATE_FACE' || result.error === 'duplicate_face') {
-          return {
-            success: false,
-            error: 'duplicate_face',
-            code: 'DUPLICATE_FACE',
-            message: result.message || 'This face is already enrolled for another user.',
-          };
+        if (data.status === 'DUPLICATE_FACE') {
+          return { success: false, error: 'duplicate_face', code: 'DUPLICATE_FACE', message: msg };
         }
       }
-      
-      return result;
+
+      return data ? { success: true, ...data } : null;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Registration failed';
       setError(errorMessage);
@@ -340,22 +300,25 @@ export const useFaceRecognition = () => {
    */
   const checkHealth = useCallback(async (): Promise<HealthCheckResult | null> => {
     try {
-      const { data, error: fnError } = await supabase.functions.invoke('face-recognition', {
-        body: { action: 'health' },
-      });
-
-      if (fnError) {
-        throw new Error(fnError.message);
+      const result = await djangoApi.healthCheck();
+      if (result.error) {
+        return {
+          success: false,
+          django_api: 'unreachable',
+          error: result.error,
+          timestamp: new Date().toISOString(),
+        };
       }
-
-      return data as HealthCheckResult;
+      return {
+        success: true,
+        django_api: 'connected',
+        timestamp: new Date().toISOString(),
+      };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Health check failed';
-      console.error('[useFaceRecognition] Health check error:', err);
       return {
         success: false,
         django_api: 'unreachable',
-        edge_function: 'error',
         error: errorMessage,
         timestamp: new Date().toISOString(),
       };
