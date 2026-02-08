@@ -178,6 +178,13 @@ const Auth = () => {
         }
 
         // Sync to Django — this is the critical step
+        console.log('[Auth] Calling /api/auth/sync/ with:', {
+          supabase_uid: signUpData.user.id,
+          email,
+          first_name: firstName,
+          last_name: lastName,
+        });
+
         const syncResult = await djangoApi.syncFromSupabase({
           supabase_uid: signUpData.user.id,
           email,
@@ -185,10 +192,17 @@ const Auth = () => {
           last_name: lastName,
         });
 
+        console.log('[Auth] Django sync response:', {
+          status: syncResult.status,
+          error: syncResult.error,
+          hasUser: !!syncResult.data?.user,
+          userId: syncResult.data?.user?.id,
+        });
+
         if (syncResult.error || !syncResult.data?.user) {
           toast({
             title: 'Account sync failed',
-            description: syncResult.error || 'Account sync failed. Please retry.',
+            description: syncResult.error || `Account sync failed (HTTP ${syncResult.status}). Please retry.`,
             variant: 'destructive',
           });
           return;
