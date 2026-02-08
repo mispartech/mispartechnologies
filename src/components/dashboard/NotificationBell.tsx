@@ -32,20 +32,26 @@ const NotificationBell = ({ userId }: NotificationBellProps) => {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (userId) {
-      fetchNotifications();
+    // Validate userId is a valid UUID before subscribing
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!userId || !uuidRegex.test(userId)) {
+      console.warn('[NotificationBell] Skipping — userId is not a valid UUID:', userId);
+      return;
+    }
+
+    fetchNotifications();
       
-      // Subscribe to realtime notifications with error handling
-      const channel = supabase
-        .channel('notifications')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${userId}`
-          },
+    // Subscribe to realtime notifications with error handling
+    const channel = supabase
+      .channel('notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`
+        },
           (payload) => {
             setNotifications((prev) => [payload.new as Notification, ...prev]);
             setUnreadCount((prev) => prev + 1);
@@ -60,10 +66,16 @@ const NotificationBell = ({ userId }: NotificationBellProps) => {
       return () => {
         supabase.removeChannel(channel);
       };
-    }
   }, [userId]);
 
   const fetchNotifications = async () => {
+    // Validate userId is a valid UUID before querying Supabase
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      console.warn('[NotificationBell] userId is not a UUID, skipping Supabase query:', userId);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
@@ -74,6 +86,8 @@ const NotificationBell = ({ userId }: NotificationBellProps) => {
     if (!error && data) {
       setNotifications(data);
       setUnreadCount(data.filter((n) => !n.is_read).length);
+    } else if (error) {
+      console.warn('[NotificationBell] fetch error:', error.message);
     }
   };
 
