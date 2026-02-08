@@ -276,10 +276,10 @@ export const useFaceRecognition = () => {
       }
 
       const data = result.data;
-      if (data && !data.embedding_saved) {
+      if (data && data.status !== 'success' && data.status !== 'SUCCESS') {
         const msg = data.message || 'Enrollment failed';
         setError(msg);
-        if (data.status === 'DUPLICATE_FACE') {
+        if (data.status === 'DUPLICATE_FACE' || data.status === 'duplicate') {
           return { success: false, error: 'duplicate_face', code: 'DUPLICATE_FACE', message: msg };
         }
       }
