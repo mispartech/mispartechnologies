@@ -312,15 +312,13 @@ class DjangoApiClient {
 
   async enrollFace(userId: string, imageBase64: string, userName?: string): Promise<ApiResponse<{
     status: string;
-    embedding_saved: boolean;
     message?: string;
     face_image_url?: string;
   }>> {
-    return this.request('/api/recognize-frame/', {
+    return this.request('/api/face/enroll/', {
       method: 'POST',
       body: JSON.stringify({
-        frame: imageBase64,
-        mode: 'ENROLLMENT',
+        image: imageBase64,
         user_id: userId,
         name: userName,
       }),

@@ -226,12 +226,12 @@ const FaceEnrollment = () => {
       const data = result.data;
 
       // Handle duplicate face error from Django
-      if (data?.status === 'DUPLICATE_FACE') {
+      if (data?.status === 'DUPLICATE_FACE' || data?.status === 'duplicate') {
         throw new Error(data.message || 'This face appears to be already enrolled for another user.');
       }
 
-      // Check for success - trust backend response completely
-      if (data?.embedding_saved) {
+      // Check for success - trust Django { status: "success" } response
+      if (data?.status === 'success' || data?.status === 'SUCCESS') {
         setEnrollmentStep('VERIFIED');
         
         // Navigate to dashboard after brief success display
