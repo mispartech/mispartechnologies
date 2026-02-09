@@ -32,10 +32,9 @@ const NotificationBell = ({ userId }: NotificationBellProps) => {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    // Validate userId is a valid UUID before subscribing
+    // Validate userId is a valid UUID before subscribing — silently skip for Django integer IDs
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!userId || !uuidRegex.test(userId)) {
-      console.warn('[NotificationBell] Skipping — userId is not a valid UUID:', userId);
       return;
     }
 
@@ -69,10 +68,9 @@ const NotificationBell = ({ userId }: NotificationBellProps) => {
   }, [userId]);
 
   const fetchNotifications = async () => {
-    // Validate userId is a valid UUID before querying Supabase
+    // Silently skip if userId is not a valid UUID (Django integer ID)
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(userId)) {
-      console.warn('[NotificationBell] userId is not a UUID, skipping Supabase query:', userId);
       return;
     }
 

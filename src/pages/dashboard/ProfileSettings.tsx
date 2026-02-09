@@ -63,6 +63,12 @@ const ProfileSettings = () => {
 
   const fetchUserRole = async () => {
     if (!user) return;
+    // Skip Supabase query if user.id is not a UUID (Django integer ID)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(user.id)) {
+      if (profile?.role) setUserRole(profile.role);
+      return;
+    }
     const { data } = await supabase
       .from('user_roles')
       .select('role')
