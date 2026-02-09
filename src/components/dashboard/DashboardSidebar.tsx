@@ -23,6 +23,7 @@ import {
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useTerminology } from '@/contexts/TerminologyContext';
+import { isUuid } from '@/lib/isUuid';
 
 interface DashboardSidebarProps {
   isOpen: boolean;
