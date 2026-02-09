@@ -43,6 +43,7 @@ class DjangoApiClient {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('django_access_token');
       localStorage.removeItem('django_refresh_token');
+      localStorage.removeItem('django_user');
     }
   }
 
@@ -154,6 +155,9 @@ class DjangoApiClient {
 
     if (result.data?.access) {
       this.saveTokens(result.data.access, result.data.refresh);
+      if (result.data.user) {
+        this.saveUser(result.data.user);
+      }
     }
 
     return result;
@@ -183,6 +187,9 @@ class DjangoApiClient {
 
     if (result.data?.access) {
       this.saveTokens(result.data.access, result.data.refresh);
+      if (result.data.user) {
+        this.saveUser(result.data.user);
+      }
     }
 
     return result;
@@ -216,6 +223,10 @@ class DjangoApiClient {
     this.clearTokens();
   }
 
+  /**
+   * Returns the cached user from the last login/sync call.
+   * No dedicated /me/ endpoint exists on the Django backend.
+   */
   async getCurrentUser(): Promise<ApiResponse<{
     id: string;
     email: string;
@@ -228,7 +239,37 @@ class DjangoApiClient {
     phone_number?: string;
     gender?: string;
   }>> {
-    return this.request('/api/auth/me/');
+    const cached = this.getCachedUser();
+    if (cached) {
+      return { data: cached, status: 200 };
+    }
+    // No cached user and no endpoint to fetch from
+    return { status: 401, error: 'No cached user. Please log in again.' };
+  }
+
+  /** Persist user data so it survives page reloads. */
+  saveUser(user: Record<string, any>) {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('django_user', JSON.stringify(user));
+    }
+  }
+
+  /** Read cached user from localStorage. */
+  getCachedUser(): any | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('django_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Clear cached user alongside tokens. */
+  clearUser() {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('django_user');
+    }
   }
 
   async updatePassword(currentPassword: string, newPassword: string): Promise<ApiResponse<void>> {
