@@ -43,6 +43,7 @@ class DjangoApiClient {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('django_access_token');
       localStorage.removeItem('django_refresh_token');
+      localStorage.removeItem('django_user');
     }
   }
 
