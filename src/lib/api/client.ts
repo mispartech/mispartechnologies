@@ -155,6 +155,9 @@ class DjangoApiClient {
 
     if (result.data?.access) {
       this.saveTokens(result.data.access, result.data.refresh);
+      if (result.data.user) {
+        this.saveUser(result.data.user);
+      }
     }
 
     return result;
