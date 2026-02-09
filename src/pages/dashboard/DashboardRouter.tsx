@@ -36,6 +36,13 @@ const DashboardRouter = () => {
         return;
       }
 
+      // If profile.id is not a UUID (Django integer ID), use profile.role directly
+      if (!isUuid(profile.id)) {
+        setUserRole(profile.role || 'member');
+        setLoading(false);
+        return;
+      }
+
       try {
         const { data, error } = await supabase
           .from('user_roles')
@@ -46,12 +53,11 @@ const DashboardRouter = () => {
         if (data && !error) {
           setUserRole(data.role);
         } else {
-          // Default to member if no role found
-          setUserRole('member');
+          setUserRole(profile.role || 'member');
         }
       } catch (error) {
         console.error('Error fetching user role:', error);
-        setUserRole('member');
+        setUserRole(profile.role || 'member');
       } finally {
         setLoading(false);
       }

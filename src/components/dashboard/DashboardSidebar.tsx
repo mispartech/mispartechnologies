@@ -37,10 +37,17 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
   const { getTerm } = useTerminology();
 
   // Fetch the actual role from user_roles table (not profiles.role)
+  // Use Django role directly if profile.id is not a UUID (Django integer ID)
   useEffect(() => {
+    if (!profile?.id) return;
+
+    // If profile.id is not a UUID, fall back to profile.role from Django
+    if (!isUuid(profile.id)) {
+      if (profile.role) setUserRole(profile.role);
+      return;
+    }
+
     const fetchUserRole = async () => {
-      if (!profile?.id) return;
-      
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
@@ -53,7 +60,7 @@ const DashboardSidebar = ({ isOpen, onToggle, currentPath, profile }: DashboardS
     };
 
     fetchUserRole();
-  }, [profile?.id]);
+  }, [profile?.id, profile?.role]);
 
   // Dynamic label based on organization type
   const getMembersLabel = () => getTerm('plural', true);
