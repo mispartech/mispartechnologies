@@ -71,38 +71,55 @@ class DjangoApiClient {
 
     const url = `${DJANGO_BASE_URL}${endpoint}`;
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
-      });
-
-      const text = await response.text();
-      let data: any;
+    const doFetch = async (): Promise<ApiResponse<T>> => {
       try {
-        data = JSON.parse(text);
-      } catch {
-        if (!response.ok) {
-          return { status: response.status, error: text || 'Request failed' };
-        }
-        return { data: text as unknown as T, status: response.status };
-      }
+        const response = await fetch(url, {
+          ...options,
+          headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
+        });
 
-      if (!response.ok) {
+        const text = await response.text();
+        let data: any;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          if (!response.ok) {
+            return { status: response.status, error: text || 'Request failed' };
+          }
+          return { data: text as unknown as T, status: response.status };
+        }
+
+        if (!response.ok) {
+          return {
+            status: response.status,
+            error: data?.detail || data?.error || data?.message || 'Request failed',
+          };
+        }
+
+        return { data: data as T, status: response.status };
+      } catch (err) {
+        console.error('API request failed:', err);
         return {
-          status: response.status,
-          error: data?.detail || data?.error || data?.message || 'Request failed',
+          status: 0,
+          error: err instanceof Error ? err.message : 'Network error',
         };
       }
+    };
 
-      return { data: data as T, status: response.status };
-    } catch (err) {
-      console.error('API request failed:', err);
-      return {
-        status: 0,
-        error: err instanceof Error ? err.message : 'Network error',
-      };
+    // First attempt
+    const result = await doFetch();
+
+    // Auto-refresh on 401 and retry once
+    if (result.status === 401 && this.refreshToken && !endpoint.includes('/token/refresh')) {
+      const refreshed = await this.refreshAccessToken();
+      if (refreshed) {
+        // Update header with new token
+        headers['Authorization'] = `Bearer ${this.accessToken}`;
+        return doFetch();
+      }
     }
+
+    return result;
   }
 
   /**
