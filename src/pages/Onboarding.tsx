@@ -257,10 +257,11 @@ const Onboarding = () => {
   useEffect(() => {
     const run = async () => {
       setIsAuthLoading(true);
-      const { data: userRes, error: userErr } = await supabase.auth.getUser();
-      if (userErr) console.warn('Auth check error:', userErr);
 
-      const user = userRes.user;
+      // Use getSession() instead of getUser() to avoid AuthSessionMissingError
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
+
       if (!user) {
         navigate('/auth');
         return;
