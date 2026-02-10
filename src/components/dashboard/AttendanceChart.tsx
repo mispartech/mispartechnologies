@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
+import { isUuid } from '@/lib/isUuid';
 import { 
   BarChart, 
   Bar, 
@@ -81,6 +82,12 @@ const AttendanceChart = ({ organizationId, userId, showVisitors = true }: Attend
   const fetchChartData = async () => {
     setIsLoading(true);
     try {
+      // Skip if userId is a non-UUID (Django integer ID)
+      if (userId && !isUuid(userId)) {
+        setIsLoading(false);
+        return;
+      }
+
       const { start, end } = getDateRange();
       const startDate = format(start, 'yyyy-MM-dd');
       const endDate = format(end, 'yyyy-MM-dd');

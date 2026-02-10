@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { isUuid } from '@/lib/isUuid';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,6 +43,10 @@ const MyAttendanceHistory = () => {
   }, [profile?.id]);
 
   const fetchAttendance = async () => {
+    if (!isUuid(profile.id)) {
+      setLoading(false);
+      return;
+    }
     try {
       const { data, error } = await supabase
         .from('attendance')

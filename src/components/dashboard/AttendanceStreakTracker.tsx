@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { isUuid } from '@/lib/isUuid';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Flame, Trophy, Star, Zap, Award } from 'lucide-react';
@@ -39,6 +40,10 @@ const AttendanceStreakTracker = ({ userId }: AttendanceStreakTrackerProps) => {
   }, [userId]);
 
   const calculateStreak = async () => {
+    if (!isUuid(userId)) {
+      setLoading(false);
+      return;
+    }
     try {
       const { data, error } = await supabase
         .from('attendance')
