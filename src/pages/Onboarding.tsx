@@ -418,9 +418,8 @@ const Onboarding = () => {
 
     setIsLoading(true);
     try {
-      const { data: userRes, error: userErr } = await supabase.auth.getUser();
-      if (userErr) throw userErr;
-      const user = userRes.user;
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) throw new Error('You are not logged in. Please sign in again and retry.');
 
       const orgId = crypto.randomUUID();
