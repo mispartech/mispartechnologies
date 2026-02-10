@@ -233,6 +233,13 @@ const FaceEnrollment = () => {
       // Check for success - trust Django { status: "success" } response
       if (data?.status === 'success' || data?.status === 'SUCCESS') {
         setEnrollmentStep('VERIFIED');
+
+        // Update cached user so the enrollment guard sees face_image_url on next check
+        const cachedUser = djangoApi.getCachedUser();
+        if (cachedUser) {
+          cachedUser.face_image_url = data.face_image_url || 'enrolled';
+          djangoApi.saveUser(cachedUser);
+        }
         
         // Navigate to dashboard after brief success display
         setTimeout(() => {

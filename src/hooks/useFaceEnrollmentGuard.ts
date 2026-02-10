@@ -48,7 +48,7 @@ export const useFaceEnrollmentGuard = (userId: string | undefined): UseEnrollmen
       const userResult = await djangoApi.getCurrentUser();
       
       if (userResult.data && !userResult.error) {
-        const enrolled = !!userResult.data.face_image_url;
+        const enrolled = !!userResult.data.face_image_url && userResult.data.face_image_url !== 'null';
         setIsEnrolled(enrolled);
         setEnrollmentStatus(enrolled ? 'READY' : 'PENDING');
         console.log('[FaceEnrollmentGuard] Django user fallback:', {
