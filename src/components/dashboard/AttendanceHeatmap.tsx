@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
+import { isUuid } from '@/lib/isUuid';
 import { 
   format, 
   subMonths, 
@@ -64,6 +65,12 @@ const AttendanceHeatmap = ({ userId, organizationId }: AttendanceHeatmapProps) =
   const fetchYearData = async () => {
     setIsLoading(true);
     try {
+      // Skip if userId is a non-UUID (Django integer ID)
+      if (userId && !isUuid(userId)) {
+        setIsLoading(false);
+        return;
+      }
+
       const startDate = `${selectedYear}-01-01`;
       const endDate = `${selectedYear}-12-31`;
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
+import { isUuid } from '@/lib/isUuid';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -73,6 +74,13 @@ const MemberDashboard = () => {
           .eq('id', profile.department_id)
           .single();
         setDepartment(deptData);
+      }
+
+      // Skip Supabase attendance queries if user ID is not a UUID (Django integer ID)
+      if (!isUuid(profile.id)) {
+        console.warn('[MemberDashboard] Skipping Supabase attendance queries: profile.id is not a UUID:', profile.id);
+        setLoading(false);
+        return;
       }
 
       // Fetch attendance stats for this member
