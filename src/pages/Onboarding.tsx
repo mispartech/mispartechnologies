@@ -358,7 +358,7 @@ const Onboarding = () => {
 
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate]);
+  }, [navigate, djangoLoading, djangoAuthenticated, djangoUser]);
 
   useEffect(() => {
     if (!userId || !storageKeys || isAuthLoading) return;
