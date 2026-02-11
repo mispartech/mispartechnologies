@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useDjangoAuth } from '@/contexts/DjangoAuthContext';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -245,6 +246,7 @@ const Onboarding = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const totalSteps = 5; // Increased to 5 steps
+  const { isAuthenticated: djangoAuthenticated, user: djangoUser, isLoading: djangoLoading } = useDjangoAuth();
 
   const didHydrateRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
@@ -255,10 +257,36 @@ const Onboarding = () => {
   }, [userId]);
 
   useEffect(() => {
+    // Wait for Django auth to settle before running
+    if (djangoLoading) return;
+
     const run = async () => {
       setIsAuthLoading(true);
 
-      // Use getSession() instead of getUser() to avoid AuthSessionMissingError
+      // Check Django auth first (primary auth)
+      if (djangoAuthenticated && djangoUser) {
+        // Already has an organization — go to dashboard
+        if (djangoUser.organization_id) {
+          navigate('/dashboard');
+          return;
+        }
+
+        // Django-authenticated user without org — allow onboarding
+        setUserId(djangoUser.id);
+
+        // Pre-fill admin info from Django user
+        setData((prev) => ({
+          ...prev,
+          adminFirstName: prev.adminFirstName || djangoUser.first_name || '',
+          adminLastName: prev.adminLastName || djangoUser.last_name || '',
+          email: prev.email || djangoUser.email || '',
+        }));
+
+        setIsAuthLoading(false);
+        return;
+      }
+
+      // Fallback: Check Supabase session for legacy users
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user ?? null;
 
@@ -330,7 +358,7 @@ const Onboarding = () => {
 
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate]);
+  }, [navigate, djangoLoading, djangoAuthenticated, djangoUser]);
 
   useEffect(() => {
     if (!userId || !storageKeys || isAuthLoading) return;
