@@ -30,10 +30,11 @@ const Auth = () => {
   // Redirect if already authenticated via Django
   useEffect(() => {
     if (isAuthenticated && user) {
-      if (user.organization_id) {
-        navigate('/dashboard');
+      const hasOrg = !!user.organization_id && user.organization_id !== 'null' && user.organization_id !== '';
+      if (hasOrg) {
+        navigate('/dashboard', { replace: true });
       } else {
-        navigate('/onboarding');
+        navigate('/onboarding', { replace: true });
       }
     }
   }, [isAuthenticated, user, navigate]);
