@@ -3,7 +3,7 @@ import { Menu, X, LogIn, User, LogOut, LayoutDashboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate, Link } from 'react-router-dom';
 import { useDjangoAuth } from '@/contexts/DjangoAuthContext';
-import { djangoApi } from '@/lib/api/client';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
