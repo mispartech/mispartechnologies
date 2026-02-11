@@ -100,7 +100,7 @@ const Navbar = ({ onRequestDemo }: NavbarProps) => {
             <div className="flex items-center gap-3">
               {isLoading ? (
                 <div className="w-20 h-9 bg-muted animate-pulse rounded-md" />
-              ) : user ? (
+              ) : isAuthenticated ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="gap-2 px-2">
