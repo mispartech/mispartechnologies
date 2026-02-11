@@ -245,7 +245,7 @@ const Onboarding = () => {
 
   const navigate = useNavigate();
   const { toast } = useToast();
-  const totalSteps = 5; // Increased to 5 steps
+  const totalSteps = 5;
   const { isAuthenticated: djangoAuthenticated, user: djangoUser, isLoading: djangoLoading } = useDjangoAuth();
 
   const didHydrateRef = useRef(false);
@@ -266,8 +266,10 @@ const Onboarding = () => {
       // Check Django auth first (primary auth)
       if (djangoAuthenticated && djangoUser) {
         // Already has an organization — go to dashboard
-        if (djangoUser.organization_id) {
-          navigate('/dashboard');
+        // Guard against falsy values like "", null, undefined, "null"
+        const hasOrg = !!djangoUser.organization_id && djangoUser.organization_id !== 'null' && djangoUser.organization_id !== '';
+        if (hasOrg) {
+          navigate('/dashboard', { replace: true });
           return;
         }
 
@@ -286,12 +288,13 @@ const Onboarding = () => {
         return;
       }
 
-      // Fallback: Check Supabase session for legacy users
+      // Not authenticated via Django — check Supabase as fallback
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user ?? null;
 
       if (!user) {
-        navigate('/auth');
+        // NOT AUTHENTICATED AT ALL — redirect to login
+        navigate('/auth', { replace: true });
         return;
       }
 
@@ -315,7 +318,7 @@ const Onboarding = () => {
           sessionStorage.removeItem(storageKeys.data);
           sessionStorage.removeItem(storageKeys.step);
         }
-        navigate('/dashboard');
+        navigate('/dashboard', { replace: true });
         return;
       }
 
@@ -570,6 +573,15 @@ const Onboarding = () => {
       default: return false;
     }
   };
+
+  // Show loading spinner while checking auth — prevents flash of onboarding form
+  if (djangoLoading || isAuthLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">

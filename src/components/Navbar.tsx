@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Menu, X, LogIn, User, LogOut, LayoutDashboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { User as SupabaseUser } from '@supabase/supabase-js';
+import { useDjangoAuth } from '@/contexts/DjangoAuthContext';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,9 +21,8 @@ const Navbar = ({ onRequestDemo }: NavbarProps) => {
   const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [user, setUser] = useState<SupabaseUser | null>(null);
-  const [profile, setProfile] = useState<{ first_name?: string; last_name?: string; email?: string } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+
+  const { user: djangoUser, isAuthenticated, isLoading, logout } = useDjangoAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -34,63 +33,28 @@ const Navbar = ({ onRequestDemo }: NavbarProps) => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  useEffect(() => {
-    // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      }
-      setIsLoading(false);
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
-        setProfile(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('first_name, last_name, email')
-      .eq('id', userId)
-      .single();
-    
-    if (data) setProfile(data);
-  };
-
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
+    await logout();
     navigate('/');
   };
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
   const getInitials = () => {
-    if (profile?.first_name && profile?.last_name) {
-      return `${profile.first_name[0]}${profile.last_name[0]}`.toUpperCase();
+    if (djangoUser?.first_name && djangoUser?.last_name) {
+      return `${djangoUser.first_name[0]}${djangoUser.last_name[0]}`.toUpperCase();
     }
-    if (user?.email) {
-      return user.email[0].toUpperCase();
+    if (djangoUser?.email) {
+      return djangoUser.email[0].toUpperCase();
     }
     return 'U';
   };
 
   const getDisplayName = () => {
-    if (profile?.first_name && profile?.last_name) {
-      return `${profile.first_name} ${profile.last_name}`;
+    if (djangoUser?.first_name && djangoUser?.last_name) {
+      return `${djangoUser.first_name} ${djangoUser.last_name}`;
     }
-    return user?.email || 'User';
+    return djangoUser?.email || 'User';
   };
 
   const navLinks = [
@@ -136,7 +100,7 @@ const Navbar = ({ onRequestDemo }: NavbarProps) => {
             <div className="flex items-center gap-3">
               {isLoading ? (
                 <div className="w-20 h-9 bg-muted animate-pulse rounded-md" />
-              ) : user ? (
+              ) : isAuthenticated ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="gap-2 px-2">
@@ -216,7 +180,7 @@ const Navbar = ({ onRequestDemo }: NavbarProps) => {
               
               {isLoading ? (
                 <li><div className="w-full h-10 bg-muted animate-pulse rounded-md" /></li>
-              ) : user ? (
+              ) : isAuthenticated ? (
                 <>
                   <li>
                     <Button 
