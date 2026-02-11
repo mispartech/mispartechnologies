@@ -180,7 +180,7 @@ const Navbar = ({ onRequestDemo }: NavbarProps) => {
               
               {isLoading ? (
                 <li><div className="w-full h-10 bg-muted animate-pulse rounded-md" /></li>
-              ) : user ? (
+              ) : isAuthenticated ? (
                 <>
                   <li>
                     <Button 
