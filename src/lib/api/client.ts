@@ -1,9 +1,12 @@
 /**
  * Django API Client
  * 
- * Calls the Django API directly at https://api.mispartechnologies.com
- * Django handles CORS — no edge function proxy needed.
+ * Calls the Django API at https://api.mispartechnologies.com
+ * Uses Supabase session token for authentication (Bearer token).
+ * Django verifies Supabase JWTs — no Django-issued tokens.
  */
+
+import { supabase } from '@/integrations/supabase/client';
 
 const DJANGO_BASE_URL = 'https://api.mispartechnologies.com';
 
@@ -14,237 +17,74 @@ interface ApiResponse<T> {
 }
 
 class DjangoApiClient {
-  private accessToken: string | null = null;
-  private refreshToken: string | null = null;
 
-  constructor() {
-    this.loadTokens();
-  }
-
-  private loadTokens() {
-    if (typeof window !== 'undefined') {
-      this.accessToken = localStorage.getItem('django_access_token');
-      this.refreshToken = localStorage.getItem('django_refresh_token');
-    }
-  }
-
-  private saveTokens(access: string, refresh: string) {
-    this.accessToken = access;
-    this.refreshToken = refresh;
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('django_access_token', access);
-      localStorage.setItem('django_refresh_token', refresh);
-    }
-  }
-
-  clearTokens() {
-    this.accessToken = null;
-    this.refreshToken = null;
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('django_access_token');
-      localStorage.removeItem('django_refresh_token');
-      localStorage.removeItem('django_user');
-    }
-  }
-
-  isAuthenticated(): boolean {
-    return !!this.accessToken;
-  }
-
-  getAccessToken(): string | null {
-    return this.accessToken;
+  /**
+   * Get the current Supabase access token.
+   */
+  private async getAccessToken(): Promise<string | null> {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
   }
 
   /**
-   * Direct fetch to Django API. CORS is handled server-side.
+   * Direct fetch to Django API with Supabase Bearer token.
    */
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
+    const token = await this.getAccessToken();
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     const url = `${DJANGO_BASE_URL}${endpoint}`;
 
-    const doFetch = async (): Promise<ApiResponse<T>> => {
-      try {
-        const response = await fetch(url, {
-          ...options,
-          headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
-        });
-
-        const text = await response.text();
-        let data: any;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          if (!response.ok) {
-            return { status: response.status, error: text || 'Request failed' };
-          }
-          return { data: text as unknown as T, status: response.status };
-        }
-
-        if (!response.ok) {
-          return {
-            status: response.status,
-            error: data?.detail || data?.error || data?.message || 'Request failed',
-          };
-        }
-
-        return { data: data as T, status: response.status };
-      } catch (err) {
-        console.error('API request failed:', err);
-        return {
-          status: 0,
-          error: err instanceof Error ? err.message : 'Network error',
-        };
-      }
-    };
-
-    // First attempt
-    const result = await doFetch();
-
-    // Auto-refresh on 401 and retry once
-    if (result.status === 401 && this.refreshToken && !endpoint.includes('/token/refresh')) {
-      const refreshed = await this.refreshAccessToken();
-      if (refreshed) {
-        // Update header with new token
-        headers['Authorization'] = `Bearer ${this.accessToken}`;
-        return doFetch();
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Handle 401 by refreshing the Django access token.
-   */
-  private async refreshAccessToken(): Promise<boolean> {
-    if (!this.refreshToken) return false;
-
     try {
-      const response = await fetch(`${DJANGO_BASE_URL}/api/auth/token/refresh/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh: this.refreshToken }),
+      const response = await fetch(url, {
+        ...options,
+        headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data?.access) {
-          this.saveTokens(data.access, this.refreshToken!);
-          return true;
+      const text = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        if (!response.ok) {
+          return { status: response.status, error: text || 'Request failed' };
         }
+        return { data: text as unknown as T, status: response.status };
       }
+
+      if (!response.ok) {
+        return {
+          status: response.status,
+          error: data?.detail || data?.error || data?.message || 'Request failed',
+        };
+      }
+
+      return { data: data as T, status: response.status };
     } catch (err) {
-      console.error('Token refresh failed:', err);
+      console.error('API request failed:', err);
+      return {
+        status: 0,
+        error: err instanceof Error ? err.message : 'Network error',
+      };
     }
-
-    this.clearTokens();
-    return false;
   }
 
-  // ============ AUTH ENDPOINTS ============
-
-  async login(email: string, password: string): Promise<ApiResponse<{
-    access: string;
-    refresh: string;
-    user: {
-      id: string;
-      email: string;
-      first_name: string;
-      last_name: string;
-      role: string;
-      organization_id: string;
-      face_image_url?: string;
-    };
-  }>> {
-    const result = await this.request<any>('/api/auth/login/', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-
-    if (result.data?.access) {
-      this.saveTokens(result.data.access, result.data.refresh);
-      if (result.data.user) {
-        this.saveUser(result.data.user);
-      }
-    }
-
-    return result;
-  }
-
-  async syncFromSupabase(data: {
-    supabase_uid: string;
-    email: string;
-    first_name?: string;
-    last_name?: string;
-  }): Promise<ApiResponse<{
-    access: string;
-    refresh: string;
-    user: {
-      id: string;
-      email: string;
-      first_name: string;
-      last_name: string;
-      role: string;
-      organization_id: string;
-    };
-  }>> {
-    const result = await this.request<any>('/api/auth/sync/', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-
-    if (result.data?.access) {
-      this.saveTokens(result.data.access, result.data.refresh);
-      if (result.data.user) {
-        this.saveUser(result.data.user);
-      }
-    }
-
-    return result;
-  }
+  // ============ PROFILE ENDPOINT ============
 
   /**
-   * @deprecated Use Supabase signup + syncFromSupabase() instead.
-   * Django does not expose /api/auth/register/.
+   * Fetch the current user's profile from Django.
+   * Django identifies the user via the Supabase JWT sub claim.
    */
-  async register(_data: {
-    email: string;
-    password: string;
-    first_name: string;
-    last_name: string;
-    phone_number?: string;
-    gender?: string;
-    organization_id?: string;
-    invite_token?: string;
-  }): Promise<ApiResponse<{ id: string; email: string }>> {
-    console.warn('[DjangoApiClient] register() is deprecated. Use Supabase signup + syncFromSupabase().');
-    return { status: 501, error: 'Use Supabase signup + syncFromSupabase() instead of register()' };
-  }
-
-  async logout(): Promise<void> {
-    if (this.refreshToken) {
-      await this.request('/api/auth/logout/', {
-        method: 'POST',
-        body: JSON.stringify({ refresh: this.refreshToken }),
-      }).catch(() => {});
-    }
-    this.clearTokens();
-  }
-
-  /**
-   * Returns the cached user from the last login/sync call.
-   * No dedicated /me/ endpoint exists on the Django backend.
-   */
-  async getCurrentUser(): Promise<ApiResponse<{
+  async getProfile(): Promise<ApiResponse<{
     id: string;
     email: string;
     first_name: string;
@@ -255,47 +95,33 @@ class DjangoApiClient {
     face_image_url?: string;
     phone_number?: string;
     gender?: string;
+    is_onboarded?: boolean;
   }>> {
-    const cached = this.getCachedUser();
-    if (cached) {
-      return { data: cached, status: 200 };
-    }
-    // No cached user and no endpoint to fetch from
-    return { status: 401, error: 'No cached user. Please log in again.' };
+    return this.request('/api/profile/');
   }
 
-  /** Persist user data so it survives page reloads. */
-  saveUser(user: Record<string, any>) {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('django_user', JSON.stringify(user));
-    }
-  }
-
-  /** Read cached user from localStorage. */
-  getCachedUser(): any | null {
-    if (typeof window === 'undefined') return null;
-    try {
-      const raw = localStorage.getItem('django_user');
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  }
-
-  /** Clear cached user alongside tokens. */
-  clearUser() {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('django_user');
-    }
-  }
-
-  async updatePassword(currentPassword: string, newPassword: string): Promise<ApiResponse<void>> {
-    return this.request('/api/auth/password/change/', {
+  /**
+   * Sync a Supabase user to Django (creates or updates the Django user).
+   * Called after Supabase signup or when a Supabase user has no Django profile yet.
+   */
+  async syncFromSupabase(data: {
+    supabase_uid: string;
+    email: string;
+    first_name?: string;
+    last_name?: string;
+  }): Promise<ApiResponse<{
+    user: {
+      id: string;
+      email: string;
+      first_name: string;
+      last_name: string;
+      role: string;
+      organization_id: string;
+    };
+  }>> {
+    return this.request('/api/auth/sync/', {
       method: 'POST',
-      body: JSON.stringify({
-        current_password: currentPassword,
-        new_password: newPassword,
-      }),
+      body: JSON.stringify(data),
     });
   }
 
@@ -493,6 +319,18 @@ class DjangoApiClient {
     return this.request(`/api/invites/${inviteId}/accept/`, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'accepted' }),
+    });
+  }
+
+  // ============ PASSWORD ============
+
+  async updatePassword(currentPassword: string, newPassword: string): Promise<ApiResponse<void>> {
+    return this.request('/api/auth/password/change/', {
+      method: 'POST',
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
     });
   }
 

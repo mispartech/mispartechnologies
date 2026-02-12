@@ -234,12 +234,8 @@ const FaceEnrollment = () => {
       if (data?.status === 'success' || data?.status === 'SUCCESS') {
         setEnrollmentStep('VERIFIED');
 
-        // Update cached user so the enrollment guard sees face_image_url on next check
-        const cachedUser = djangoApi.getCachedUser();
-        if (cachedUser) {
-          cachedUser.face_image_url = data.face_image_url || 'enrolled';
-          djangoApi.saveUser(cachedUser);
-        }
+        // Refresh the auth context so the enrollment guard sees the updated face_image_url
+        // (The profile will be re-fetched from Django on next check)
         
         // Navigate to dashboard after brief success display
         setTimeout(() => {
