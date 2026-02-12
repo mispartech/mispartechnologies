@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { djangoApi } from '@/lib/api/client';
 import { useDjangoAuth } from '@/contexts/DjangoAuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,10 +23,11 @@ const Auth = () => {
   
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { isAuthenticated, user, refreshUser } = useDjangoAuth();
+  const { isAuthenticated, user, isLoading: authLoading, login, register } = useDjangoAuth();
 
-  // Redirect if already authenticated via Django
+  // Redirect if already authenticated
   useEffect(() => {
+    if (authLoading) return;
     if (isAuthenticated && user) {
       const hasOrg = !!user.organization_id && user.organization_id !== 'null' && user.organization_id !== '';
       if (hasOrg) {
@@ -37,60 +36,16 @@ const Auth = () => {
         navigate('/onboarding', { replace: true });
       }
     }
-  }, [isAuthenticated, user, navigate]);
-
-  // Also check Supabase session for existing users (Phase 1 bridge)
-  useEffect(() => {
-    const checkExistingSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user && !isAuthenticated) {
-        // Existing Supabase user - sync to Django
-        await syncSupabaseUserToDjango(session.user);
-      }
-    };
-    
-    checkExistingSession();
-  }, [isAuthenticated]);
-
-  const syncSupabaseUserToDjango = async (supabaseUser: any) => {
-    try {
-      const { data, error } = await djangoApi.syncFromSupabase({
-        supabase_uid: supabaseUser.id,
-        email: supabaseUser.email || '',
-        first_name: supabaseUser.user_metadata?.first_name || '',
-        last_name: supabaseUser.user_metadata?.last_name || '',
-      });
-
-      if (data && !error) {
-        await refreshUser();
-        if (data.user?.organization_id) {
-          navigate('/dashboard');
-        } else {
-          navigate('/onboarding');
-        }
-      }
-    } catch (err) {
-      console.error('Failed to sync Supabase user to Django:', err);
-    }
-  };
+  }, [isAuthenticated, user, authLoading, navigate]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
     
-    try {
-      emailSchema.parse(email);
-    } catch (e) {
-      if (e instanceof z.ZodError) {
-        newErrors.email = e.errors[0].message;
-      }
+    try { emailSchema.parse(email); } catch (e) {
+      if (e instanceof z.ZodError) newErrors.email = e.errors[0].message;
     }
-
-    try {
-      passwordSchema.parse(password);
-    } catch (e) {
-      if (e instanceof z.ZodError) {
-        newErrors.password = e.errors[0].message;
-      }
+    try { passwordSchema.parse(password); } catch (e) {
+      if (e instanceof z.ZodError) newErrors.password = e.errors[0].message;
     }
 
     setErrors(newErrors);
@@ -99,122 +54,54 @@ const Auth = () => {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!validateForm()) return;
     
     setIsLoading(true);
 
     try {
       if (isLogin) {
-        // Phase 1: Try Django login first
-        const djangoResult = await djangoApi.login(email, password);
+        // Login via Supabase only
+        const result = await login(email, password);
         
-        if (!djangoResult.error && djangoResult.data?.user) {
-          // Django login successful
-          await refreshUser();
-          toast({
-            title: 'Welcome back!',
-            description: 'You have successfully logged in.',
-          });
-          
-          if (djangoResult.data.user.organization_id) {
-            navigate('/dashboard');
-          } else {
-            navigate('/onboarding');
-          }
-          return;
-        }
-
-        // Fallback: Try Supabase login for existing users
-        const { data: supabaseData, error: supabaseError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (supabaseError) {
+        if (result.error) {
           toast({
             title: 'Login failed',
-            description: supabaseError.message.includes('Invalid login credentials')
+            description: result.error.includes('Invalid login credentials')
               ? 'Invalid email or password. Please try again.'
-              : supabaseError.message,
+              : result.error,
             variant: 'destructive',
           });
           return;
         }
 
-        // Supabase login successful - sync to Django
-        if (supabaseData.user) {
-          await syncSupabaseUserToDjango(supabaseData.user);
-          toast({
-            title: 'Welcome back!',
-            description: 'You have successfully logged in.',
-          });
-        }
+        toast({
+          title: 'Welcome back!',
+          description: 'You have successfully logged in.',
+        });
+        // Redirect handled by the useEffect above once user state updates
       } else {
-        // NEW SIGNUPS: Create Supabase auth user, then sync to Django
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        // Signup via Supabase + Django sync
+        const result = await register({
           email,
           password,
-          options: {
-            data: { first_name: firstName, last_name: lastName },
-          },
-        });
-
-        if (signUpError) {
-          toast({
-            title: 'Sign up failed',
-            description: signUpError.message,
-            variant: 'destructive',
-          });
-          return;
-        }
-
-        if (!signUpData?.user) {
-          toast({
-            title: 'Sign up failed',
-            description: 'No user returned from signup.',
-            variant: 'destructive',
-          });
-          return;
-        }
-
-        // Sync to Django — this is the critical step
-        console.log('[Auth] Calling /api/auth/sync/ with:', {
-          supabase_uid: signUpData.user.id,
-          email,
           first_name: firstName,
           last_name: lastName,
         });
 
-        const syncResult = await djangoApi.syncFromSupabase({
-          supabase_uid: signUpData.user.id,
-          email,
-          first_name: firstName,
-          last_name: lastName,
-        });
-
-        console.log('[Auth] Django sync response:', {
-          status: syncResult.status,
-          error: syncResult.error,
-          hasUser: !!syncResult.data?.user,
-          userId: syncResult.data?.user?.id,
-        });
-
-        if (syncResult.error || !syncResult.data?.user) {
+        if (result.error) {
           toast({
-            title: 'Account sync failed',
-            description: syncResult.error || `Account sync failed (HTTP ${syncResult.status}). Please retry.`,
+            title: 'Sign up failed',
+            description: result.error,
             variant: 'destructive',
           });
           return;
         }
 
-        await refreshUser();
         toast({
           title: 'Account created!',
           description: 'Welcome to the Smart Attendance System.',
         });
-        navigate('/onboarding');
+        navigate('/onboarding', { replace: true });
       }
     } catch (error) {
       toast({

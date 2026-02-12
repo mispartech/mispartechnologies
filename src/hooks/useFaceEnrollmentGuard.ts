@@ -45,7 +45,7 @@ export const useFaceEnrollmentGuard = (userId: string | undefined): UseEnrollmen
 
       // Fallback: Check Django user profile for face_image_url
       console.log('[FaceEnrollmentGuard] Enrollment status endpoint unavailable, checking Django user profile...');
-      const userResult = await djangoApi.getCurrentUser();
+      const userResult = await djangoApi.getProfile();
       
       if (userResult.data && !userResult.error) {
         const enrolled = !!userResult.data.face_image_url && userResult.data.face_image_url !== 'null';

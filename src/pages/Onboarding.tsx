@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client'; // still needed for onboarding session persistence
 import { useDjangoAuth } from '@/contexts/DjangoAuthContext';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -257,73 +257,38 @@ const Onboarding = () => {
   }, [userId]);
 
   useEffect(() => {
-    // Wait for Django auth to settle before running
     if (djangoLoading) return;
 
     const run = async () => {
       setIsAuthLoading(true);
 
-      // Check Django auth first (primary auth)
-      if (djangoAuthenticated && djangoUser) {
-        // Already has an organization — go to dashboard
-        // Guard against falsy values like "", null, undefined, "null"
-        const hasOrg = !!djangoUser.organization_id && djangoUser.organization_id !== 'null' && djangoUser.organization_id !== '';
-        if (hasOrg) {
-          navigate('/dashboard', { replace: true });
-          return;
-        }
-
-        // Django-authenticated user without org — allow onboarding
-        setUserId(djangoUser.id);
-
-        // Pre-fill admin info from Django user
-        setData((prev) => ({
-          ...prev,
-          adminFirstName: prev.adminFirstName || djangoUser.first_name || '',
-          adminLastName: prev.adminLastName || djangoUser.last_name || '',
-          email: prev.email || djangoUser.email || '',
-        }));
-
-        setIsAuthLoading(false);
-        return;
-      }
-
-      // Not authenticated via Django — check Supabase as fallback
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user ?? null;
-
-      if (!user) {
-        // NOT AUTHENTICATED AT ALL — redirect to login
+      // Must be authenticated via Supabase (DjangoAuthProvider uses Supabase session)
+      if (!djangoAuthenticated || !djangoUser) {
         navigate('/auth', { replace: true });
         return;
       }
 
-      setUserId(user.id);
-
-      const { data: profile, error: profileErr } = await supabase
-        .from('profiles')
-        .select('first_name, last_name, email, organization_id')
-        .eq('id', user.id)
-        .single();
-
-      if (profileErr) console.warn('Profile fetch error:', profileErr);
-
-      if (profile?.organization_id) {
-        try {
-          await deleteOnboardingSession(user.id);
-        } catch {
-          // ignore
-        }
-        if (storageKeys) {
-          sessionStorage.removeItem(storageKeys.data);
-          sessionStorage.removeItem(storageKeys.step);
-        }
+      // Already onboarded — go to dashboard
+      const hasOrg = !!djangoUser.organization_id && djangoUser.organization_id !== 'null' && djangoUser.organization_id !== '';
+      if (hasOrg) {
         navigate('/dashboard', { replace: true });
         return;
       }
 
+      // Authenticated user without org — allow onboarding
+      setUserId(djangoUser.id);
+
+      // Pre-fill admin info
+      setData((prev) => ({
+        ...prev,
+        adminFirstName: prev.adminFirstName || djangoUser.first_name || '',
+        adminLastName: prev.adminLastName || djangoUser.last_name || '',
+        email: prev.email || djangoUser.email || '',
+      }));
+
+      // Try to restore onboarding session
       try {
-        const persisted = await loadOnboardingSession(user.id);
+        const persisted = await loadOnboardingSession(djangoUser.id);
         if (persisted && !didHydrateRef.current) {
           didHydrateRef.current = true;
           setStep(Math.min(5, Math.max(1, persisted.step || 1)));
@@ -345,15 +310,6 @@ const Onboarding = () => {
         } catch (e) {
           console.warn('Failed to load onboarding session from sessionStorage:', e);
         }
-      }
-
-      if (profile) {
-        setData((prev) => ({
-          ...prev,
-          adminFirstName: prev.adminFirstName || profile.first_name || '',
-          adminLastName: prev.adminLastName || profile.last_name || '',
-          email: prev.email || profile.email || user.email || '',
-        }));
       }
 
       setIsAuthLoading(false);

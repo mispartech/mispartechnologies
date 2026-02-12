@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { djangoApi } from '@/lib/api/client';
 
 interface User {
@@ -12,6 +13,7 @@ interface User {
   face_image_url?: string;
   phone_number?: string;
   gender?: string;
+  is_onboarded?: boolean;
 }
 
 interface AuthContextType {
@@ -38,55 +40,84 @@ export const DjangoAuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  /**
+   * Fetch the Django profile using the current Supabase session token.
+   */
+  const fetchProfile = useCallback(async (): Promise<User | null> => {
+    const { data, error } = await djangoApi.getProfile();
+    if (data && !error) {
+      return data as User;
+    }
+    console.warn('[DjangoAuth] Failed to fetch profile:', error);
+    return null;
+  }, []);
+
   const refreshUser = useCallback(async () => {
-    if (!djangoApi.isAuthenticated()) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
       setUser(null);
       return;
     }
+    const profile = await fetchProfile();
+    setUser(profile);
+  }, [fetchProfile]);
 
-    const { data, error } = await djangoApi.getCurrentUser();
-    if (data && !error) {
-      setUser(data);
-    } else {
-      setUser(null);
-      if (error) {
-        djangoApi.clearTokens();
-      }
-    }
-  }, []);
-
+  // Initialize: listen to Supabase auth state
   useEffect(() => {
+    let mounted = true;
+
     const initialize = async () => {
-      setIsLoading(true);
-      await refreshUser();
-      setIsLoading(false);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && mounted) {
+        const profile = await fetchProfile();
+        if (mounted) setUser(profile);
+      }
+      if (mounted) setIsLoading(false);
     };
 
     initialize();
-  }, [refreshUser]);
 
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      if (event === 'SIGNED_IN' && session) {
+        const profile = await fetchProfile();
+        if (mounted) setUser(profile);
+      } else if (event === 'SIGNED_OUT') {
+        if (mounted) setUser(null);
+      } else if (event === 'TOKEN_REFRESHED' && session) {
+        // Token refreshed — profile stays the same, no action needed
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [fetchProfile]);
+
+  /**
+   * Login using Supabase only.
+   */
   const login = useCallback(async (email: string, password: string) => {
-    const { data, error } = await djangoApi.login(email, password);
-    
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      return { error };
+      return { error: error.message };
     }
-
-    if (data?.user) {
-      setUser(data.user);
-    } else {
-      // Fetch user if not returned with login
-      await refreshUser();
-    }
-
+    // Profile will be fetched via onAuthStateChange SIGNED_IN event
     return {};
-  }, [refreshUser]);
+  }, []);
 
+  /**
+   * Logout using Supabase only.
+   */
   const logout = useCallback(async () => {
-    await djangoApi.logout();
+    await supabase.auth.signOut();
     setUser(null);
   }, []);
 
+  /**
+   * Register via Supabase signup, then sync to Django.
+   */
   const register = useCallback(async (data: {
     email: string;
     password: string;
@@ -96,11 +127,36 @@ export const DjangoAuthProvider = ({ children }: { children: ReactNode }) => {
     gender?: string;
     invite_token?: string;
   }) => {
-    // Registration now goes through Supabase signup + Django sync.
-    // This method is kept for backward compat but delegates to syncFromSupabase.
-    // Callers should use Supabase signup first, then call syncFromSupabase directly.
-    console.warn('[DjangoAuthProvider] register() is deprecated. Use Supabase signup + syncFromSupabase().');
-    return { error: 'Use Supabase signup + syncFromSupabase() flow instead.' };
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        data: { first_name: data.first_name, last_name: data.last_name },
+      },
+    });
+
+    if (signUpError) {
+      return { error: signUpError.message };
+    }
+
+    if (!signUpData?.user) {
+      return { error: 'No user returned from signup.' };
+    }
+
+    // Sync to Django
+    const syncResult = await djangoApi.syncFromSupabase({
+      supabase_uid: signUpData.user.id,
+      email: data.email,
+      first_name: data.first_name,
+      last_name: data.last_name,
+    });
+
+    if (syncResult.error || !syncResult.data?.user) {
+      return { error: syncResult.error || 'Failed to sync account.' };
+    }
+
+    // Profile will be fetched via onAuthStateChange
+    return { user: syncResult.data.user as unknown as User };
   }, []);
 
   const value: AuthContextType = {
