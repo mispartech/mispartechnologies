@@ -4,13 +4,13 @@ project_id = "sdyichnqroitptxloyyl"
 verify_jwt = false
 
 [functions.face-enroll]
-verify_jwt = true
+verify_jwt = false
 
 [functions.django-proxy]
 verify_jwt = false
 
 [functions.send-member-invite]
-verify_jwt = true
+verify_jwt = false
 
 [functions.send-admin-invite]
-verify_jwt = true
+verify_jwt = false
