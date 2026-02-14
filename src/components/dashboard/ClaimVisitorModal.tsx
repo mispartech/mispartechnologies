@@ -86,15 +86,58 @@ const ClaimVisitorModal = ({ isOpen, onClose, visitor, onSuccess }: ClaimVisitor
 
     setLoading(true);
     try {
-      // Get current user's org
+      // Verify current user is an admin
       const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) throw new Error('Not authenticated');
+
       const { data: currentProfile } = await supabase
         .from('profiles')
         .select('organization_id')
-        .eq('id', currentUser?.id)
+        .eq('id', currentUser.id)
         .single();
 
-      // Create new user account
+      if (!currentProfile?.organization_id) throw new Error('No organization found');
+
+      // Verify caller has admin role (server-side enforced via RLS, but validate client-side too)
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', currentUser.id);
+
+      const isAdmin = roles && roles.some(r =>
+        ['super_admin', 'admin', 'parish_pastor', 'department_head'].includes(r.role)
+      );
+
+      if (!isAdmin) {
+        toast({
+          title: 'Permission Denied',
+          description: 'Only administrators can register visitors.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Verify the temp_attendance record exists and is still pending
+      const { data: tempRecord, error: tempError } = await supabase
+        .from('temp_attendance')
+        .select('id, status')
+        .eq('id', visitor.id)
+        .single();
+
+      if (tempError || !tempRecord) {
+        throw new Error('Visitor record not found');
+      }
+
+      if (tempRecord.status === 'claimed') {
+        toast({
+          title: 'Already Claimed',
+          description: 'This visitor has already been registered.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Create new user account (email verification required by default)
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -118,7 +161,7 @@ const ClaimVisitorModal = ({ isOpen, onClose, visitor, onSuccess }: ClaimVisitor
           phone_number: formData.phoneNumber,
           gender: formData.gender,
           department_id: formData.departmentId || null,
-          organization_id: currentProfile?.organization_id,
+          organization_id: currentProfile.organization_id,
           face_image_url: visitor.face_roi_url,
         })
         .eq('id', authData.user.id);
@@ -131,7 +174,7 @@ const ClaimVisitorModal = ({ isOpen, onClose, visitor, onSuccess }: ClaimVisitor
         .insert({
           user_id: authData.user.id,
           role: 'member',
-          organization_id: currentProfile?.organization_id,
+          organization_id: currentProfile.organization_id,
         });
 
       if (roleError) throw roleError;
@@ -139,7 +182,6 @@ const ClaimVisitorModal = ({ isOpen, onClose, visitor, onSuccess }: ClaimVisitor
       // Register face if we have the face image
       if (visitor.face_roi_url) {
         try {
-          // Fetch the face image and convert to base64
           const response = await fetch(visitor.face_roi_url);
           const blob = await response.blob();
           const reader = new FileReader();
@@ -158,7 +200,6 @@ const ClaimVisitorModal = ({ isOpen, onClose, visitor, onSuccess }: ClaimVisitor
           });
         } catch (faceError) {
           console.error('Face registration error:', faceError);
-          // Continue even if face registration fails
         }
       }
 
@@ -167,7 +208,7 @@ const ClaimVisitorModal = ({ isOpen, onClose, visitor, onSuccess }: ClaimVisitor
         .from('temp_attendance')
         .update({
           status: 'claimed',
-          claimed_by: currentUser?.id,
+          claimed_by: currentUser.id,
           claimed_at: new Date().toISOString(),
         })
         .eq('id', visitor.id);
@@ -239,7 +280,7 @@ const ClaimVisitorModal = ({ isOpen, onClose, visitor, onSuccess }: ClaimVisitor
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            This will create a new account and register their face for attendance tracking.
+            This will create a new account and register their face for attendance tracking. The new member will need to verify their email.
           </AlertDescription>
         </Alert>
 
@@ -247,62 +288,33 @@ const ClaimVisitorModal = ({ isOpen, onClose, visitor, onSuccess }: ClaimVisitor
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="firstName">First Name *</Label>
-              <Input
-                id="firstName"
-                value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                required
-              />
+              <Input id="firstName" value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="lastName">Last Name *</Label>
-              <Input
-                id="lastName"
-                value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                required
-              />
+              <Input id="lastName" value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} required />
             </div>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="email">Email *</Label>
-            <Input
-              id="email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              required
-            />
+            <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="password">Password *</Label>
-            <Input
-              id="password"
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              required
-              minLength={6}
-            />
+            <Input id="password" type="password" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required minLength={6} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="phoneNumber">Phone Number</Label>
-              <Input
-                id="phoneNumber"
-                value={formData.phoneNumber}
-                onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-              />
+              <Input id="phoneNumber" value={formData.phoneNumber} onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="gender">Gender</Label>
               <Select value={formData.gender} onValueChange={(v) => setFormData({ ...formData, gender: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="male">Male</SelectItem>
                   <SelectItem value="female">Female</SelectItem>
@@ -315,32 +327,19 @@ const ClaimVisitorModal = ({ isOpen, onClose, visitor, onSuccess }: ClaimVisitor
           <div className="space-y-2">
             <Label htmlFor="department">Department</Label>
             <Select value={formData.departmentId} onValueChange={(v) => setFormData({ ...formData, departmentId: v })}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select department" />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
               <SelectContent>
                 {departments.map((dept) => (
-                  <SelectItem key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </SelectItem>
+                  <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Registering...
-                </>
-              ) : (
-                'Register Member'
-              )}
+              {loading ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Registering...</>) : 'Register Member'}
             </Button>
           </DialogFooter>
         </form>
