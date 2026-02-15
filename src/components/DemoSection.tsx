@@ -40,7 +40,7 @@ const DemoSection = () => {
           </span>
           <h2 className="mb-4">Experience Face Recognition</h2>
           <p className="text-muted-foreground text-lg">
-            See how fast and accurate our technology works. No camera access needed for this demo.
+            Upload your photo to enroll, then use your camera to experience real-time face recognition. Free 7-day trial.
           </p>
         </div>
         
