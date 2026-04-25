@@ -50,7 +50,7 @@ const TestimonialSection = () => {
   const [isAnimating, setIsAnimating] = useState(false);
   const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('right');
   const sectionRef = useRef<HTMLDivElement>(null);
-  const autoPlayRef = useRef<NodeJS.Timeout>();
+  const autoPlayRef = useRef<ReturnType<typeof setInterval>>();
   
   const nextTestimonial = () => {
     if (isAnimating) return;

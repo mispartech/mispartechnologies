@@ -222,7 +222,7 @@ const AttendanceCapture = () => {
         }
       }
     } catch (err) {
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         console.error('[AttendanceCapture] Recognition error:', err);
       }
     }
